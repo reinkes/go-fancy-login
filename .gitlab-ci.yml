@@ -1,0 +1,61 @@
+variables:
+  HARBOR_DOCKER_PROXY: harbor.emea.ocp.int.kn/dockerhub
+  HTTPS_PROXY: http://zscaler.proxy.int.kn:80
+  NO_PROXY: .int.kn,localhost,127.0.0.1
+  GOPATH: "$CI_PROJECT_DIR/.go"
+
+cache:
+  key: ${CI_PROJECT_NAME}-go
+  paths:
+    - .go/pkg/mod
+
+lint:
+  image:
+    name: "${HARBOR_DOCKER_PROXY}/golangci/golangci-lint:v2.4.0-alpine"
+    pull_policy: if-not-present
+  script:
+    - golangci-lint run --timeout 10m --output.code-climate.path gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+
+build:
+  image:
+    name: "${HARBOR_DOCKER_PROXY}/library/golang:1.25.1-alpine"
+    pull_policy: if-not-present
+  before_script:
+    - apk add git make ncurses
+    - go install github.com/goreleaser/goreleaser/v2@latest
+    - go install gotest.tools/gotestsum@latest
+  script:
+    - export PATH="$GOPATH/bin:$PATH"
+    - make build
+    - make test
+    - mkdir -p dist/test-results
+    - gotestsum --junitfile dist/test-results/unittests.xml --format testname -- -v ./...
+  artifacts:
+    reports:
+      junit: dist/test-results/unittests.xml
+    paths:
+      - fancy-login-go
+    expire_in: 1 week
+
+publish:
+  needs:
+    - lint
+    - build
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+/
+  image:
+    name: "${HARBOR_DOCKER_PROXY}/library/golang:1.25.1-alpine"
+    pull_policy: if-not-present
+  before_script:
+    - apk add git make curl ncurses
+    - go install github.com/goreleaser/goreleaser/v2@latest
+  script:
+    - export PATH="$GOPATH/bin:$PATH"
+    - make release
+  artifacts:
+    paths:
+      - build/release/
+    expire_in: 30 days
