@@ -168,22 +168,33 @@ fancy-go
 - ✅ Maintained compatibility with existing config files
 - ✅ Added proper error handling and logging
 - ✅ Created installation script and documentation
+- ✅ Implemented GitLab CI/CD pipeline with lint, build, and release stages
+- ✅ Added version flag functionality for build information retrieval
+- ✅ Created secure configuration template system for AWS and Kubernetes configs
 
 ## Architecture
 
 ### Directory Structure
 ```
-go/
+go-fancy-login/
 ├── cmd/main.go                    # Main application entry point
 ├── internal/
 │   ├── aws/aws.go                 # AWS operations (SSO, ECR, profiles)  
 │   ├── config/config.go           # Configuration handling
 │   ├── k8s/k8s.go                 # Kubernetes operations
 │   └── utils/logger.go            # Logging and utilities
-├── scripts/install-fancy-go.sh    # Installation script
-├── .fancy-contexts.conf           # Context mappings (copied from parent)
-├── .fancy-namespaces.conf         # Namespace mappings (copied from parent)
-└── README.md                      # Documentation
+├── examples/
+│   ├── aws-config.template        # AWS configuration template
+│   ├── kube-config.template       # Kubernetes configuration template
+│   └── README.md                  # Template documentation
+├── build/                         # Build artifacts (created by make)
+├── scripts/                       # Build and utility scripts
+├── .gitlab-ci.yml                 # GitLab CI/CD pipeline
+├── .fancy-contexts.conf           # Context mappings
+├── .fancy-namespaces.conf         # Namespace mappings  
+├── Makefile                       # Build system
+├── go.mod                         # Go module definition
+└── README.md                      # Project documentation
 ```
 
 ### Key Components
@@ -258,15 +269,110 @@ MD=mykn-masterdata
 OV=mykn-track-overviews
 ```
 
+## CI/CD Pipeline
+
+### GitLab CI Configuration
+The project includes a complete GitLab CI/CD pipeline (`.gitlab-ci.yml`) with three stages:
+
+**Lint Stage:**
+- Uses `golangci-lint:v2.4.0-alpine` for code quality analysis
+- Generates GitLab code quality reports
+- Runs with 10-minute timeout for comprehensive analysis
+
+**Build Stage:**
+- Uses `golang:1.25.1-alpine` matching project Go version
+- Installs goreleaser and gotestsum for advanced build and test capabilities
+- Executes `make build` and `make test` targets
+- Generates JUnit XML test reports for GitLab integration
+- Preserves build artifacts (fancy-login-go binary)
+
+**Publish Stage:**
+- Triggered only on version tags (`v*.*` pattern)
+- Uses `make release` to create multi-platform release archives
+- Creates checksums and release artifacts
+- Maintains artifacts for 30 days
+
+**Pipeline Features:**
+- Proxy configuration for corporate environments
+- Go module caching for faster builds
+- Harbor registry integration for container images
+- Parallel job execution for optimal CI performance
+
+### Version Management
+
+**Version Flag Functionality:**
+- `--version` flag displays build-time information
+- Shows version, build timestamp, and Git commit hash
+- Version information injected via Makefile ldflags during build
+- Enables easy identification of deployed versions
+
+```bash
+./fancy-login-go --version
+# Output:
+# fancy-login-go version v1.2.3
+# Build time: 2025-09-12T13:25:54Z  
+# Git commit: daae12c
+```
+
+**Build-time Variables:**
+- `version`: Git tag or commit hash with dirty flag
+- `buildTime`: ISO 8601 timestamp of build
+- `gitCommit`: Short Git commit hash
+- Variables automatically populated by Makefile during compilation
+
+## Configuration Template System
+
+### Secure Configuration Distribution
+Instead of including sensitive configuration files in the repository, the project provides a template-based approach:
+
+**Template Files:**
+- `examples/aws-config.template`: AWS configuration with placeholders
+- `examples/kube-config.template`: Kubernetes configuration for EKS
+- `examples/README.md`: Comprehensive setup documentation
+
+**Template Installation:**
+```bash
+make install-templates  # Safe installation (won't overwrite existing configs)
+```
+
+**Template Features:**
+- **Security**: No sensitive data in repository
+- **Placeholder Values**: Clear indicators for customization points  
+- **Multi-Environment**: Support for dev/staging/prod configurations
+- **EKS Integration**: Pre-configured for AWS EKS clusters
+- **Profile Consistency**: Maintains AWS/Kubernetes profile alignment
+
+**Installation Safety:**
+- Only installs templates if target config files don't exist
+- Provides clear warnings about required customization
+- Offers manual installation instructions as alternative
+- Includes validation guidance for proper setup
+
+### Configuration Workflow
+1. **Initial Setup**: Run `make install-templates` after installation
+2. **Customization**: Replace placeholder values with actual configuration
+3. **Validation**: Test configuration with AWS and kubectl commands
+4. **Profile Alignment**: Ensure AWS profiles match Kubernetes config AWS_PROFILE values
+
 ## Usage Patterns
 
 **Installation:**
 ```bash
-cd go && ./scripts/install-fancy-go.sh
+make build && make install           # Build and install binary
+make install-templates              # Install configuration templates
+```
+
+**Development:**
+```bash
+make build                          # Quick build for testing
+make test                           # Run test suite
+make lint                           # Code quality analysis
+make release                        # Multi-platform release build
 ```
 
 **Shell Setup:** Add to ~/.zshrc and reload
 **Daily Usage:** `fancy-go` or `fancy` (with alias)
+**Version Check:** `fancy-go --version`
 
 ## Testing Status
 - ✅ Help output working correctly

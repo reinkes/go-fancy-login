@@ -23,6 +23,7 @@ var (
 	k9sFlag = flag.Bool("k", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
 	forceAWSLogin = flag.Bool("force-aws-login", false, "Force AWS SSO login even if a valid session exists")
 	helpFlag = flag.Bool("h", false, "Show help message")
+	versionFlag = flag.Bool("version", false, "Show version information")
 )
 
 func main() {
@@ -30,6 +31,11 @@ func main() {
 	flag.BoolVar(k9sFlag, "k9s", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
 	flag.BoolVar(helpFlag, "help", false, "Show help message")
 	flag.Parse()
+
+	if *versionFlag {
+		showVersion()
+		return
+	}
 
 	if *helpFlag {
 		showHelp()
@@ -131,6 +137,7 @@ OPTIONS:
   -v, --verbose       Enable verbose output
   --force-aws-login   Force AWS SSO login even if a valid session exists
   -h, --help          Show this help message
+  --version           Show version information
 
 Description:
   Interactive tool for AWS SSO login and Kubernetes context selection.
@@ -146,6 +153,12 @@ Version: %s
 Build Time: %s
 Git Commit: %s
 `, os.Args[0], version, buildTime, gitCommit)
+}
+
+func showVersion() {
+	fmt.Printf("fancy-login-go version %s\n", version)
+	fmt.Printf("Build time: %s\n", buildTime)
+	fmt.Printf("Git commit: %s\n", gitCommit)
 }
 
 func containsDev(profile string) bool {

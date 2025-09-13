@@ -1,0 +1,80 @@
+# Kubernetes Config Template for fancy-login
+# Copy this file to ~/.kube/config and customize the values below
+#
+# This template includes example cluster configurations that work with AWS EKS.
+# Replace placeholder values with your actual cluster information.
+
+apiVersion: v1
+kind: Config
+current-context: ""
+
+clusters:
+# Development Cluster Example
+- cluster:
+    certificate-authority-data: YOUR_DEV_CLUSTER_CA_DATA
+    server: https://YOUR_DEV_CLUSTER_ENDPOINT.eks.YOUR_REGION.amazonaws.com
+  name: YOUR_DEV_CLUSTER_NAME
+
+# Production Cluster Example  
+- cluster:
+    certificate-authority-data: YOUR_PROD_CLUSTER_CA_DATA
+    server: https://YOUR_PROD_CLUSTER_ENDPOINT.eks.YOUR_REGION.amazonaws.com
+  name: YOUR_PROD_CLUSTER_NAME
+
+contexts:
+# Development Context
+- context:
+    cluster: YOUR_DEV_CLUSTER_NAME
+    user: YOUR_DEV_CLUSTER_NAME
+    namespace: default
+  name: YOUR_DEV_CONTEXT_NAME
+
+# Production Context
+- context:
+    cluster: YOUR_PROD_CLUSTER_NAME
+    user: YOUR_PROD_CLUSTER_NAME
+    namespace: default
+  name: YOUR_PROD_CONTEXT_NAME
+
+users:
+# Development User (AWS EKS)
+- name: YOUR_DEV_CLUSTER_NAME
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: aws
+      args:
+        - eks
+        - get-token
+        - --cluster-name
+        - YOUR_DEV_CLUSTER_NAME
+        - --region
+        - YOUR_REGION
+      env:
+        - name: AWS_PROFILE
+          value: YOUR_PROJECT_DEV_PROFILE
+
+# Production User (AWS EKS)
+- name: YOUR_PROD_CLUSTER_NAME
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: aws
+      args:
+        - eks
+        - get-token
+        - --cluster-name
+        - YOUR_PROD_CLUSTER_NAME
+        - --region
+        - YOUR_REGION
+      env:
+        - name: AWS_PROFILE
+          value: YOUR_PROJECT_PROD_PROFILE
+
+# Configuration Notes:
+# - Replace YOUR_PROJECT with your actual project name
+# - Replace cluster names, endpoints, and CA data with actual values from your EKS clusters
+# - Replace YOUR_REGION with your AWS region (e.g., us-east-1)
+# - AWS_PROFILE values should match your AWS config profile names
+# - You can get cluster info with: aws eks describe-cluster --name YOUR_CLUSTER_NAME
+# - Certificate authority data can be obtained from the EKS cluster description

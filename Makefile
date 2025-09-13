@@ -30,6 +30,7 @@ help:
 	@echo "  test          - Run tests"
 	@echo "  lint          - Run linter (requires golangci-lint)"
 	@echo "  install       - Install binary to GOPATH/bin"
+	@echo "  install-templates - Install configuration templates to ~/.aws and ~/.kube"
 	@echo "  release       - Create release archives"
 	@echo "  docker        - Build Docker image"
 	@echo "  version       - Show version info"
@@ -95,6 +96,30 @@ install: build
 	@echo "📦 Installing $(BINARY_NAME)..."
 	cp $(BINARY_NAME) $$GOPATH/bin/
 	@echo "✅ Installed to $$GOPATH/bin/$(BINARY_NAME)"
+
+# Install configuration templates
+.PHONY: install-templates
+install-templates:
+	@echo "📋 Installing configuration templates..."
+	@mkdir -p ~/.aws ~/.kube
+	@if [ ! -f ~/.aws/config ]; then \
+		echo "Installing AWS config template to ~/.aws/config"; \
+		cp examples/aws-config.template ~/.aws/config; \
+		echo "⚠️  Please edit ~/.aws/config with your actual AWS configuration"; \
+	else \
+		echo "~/.aws/config already exists, skipping AWS config installation"; \
+		echo "💡 You can manually copy examples/aws-config.template if needed"; \
+	fi
+	@if [ ! -f ~/.kube/config ]; then \
+		echo "Installing Kubernetes config template to ~/.kube/config"; \
+		cp examples/kube-config.template ~/.kube/config; \
+		echo "⚠️  Please edit ~/.kube/config with your actual cluster configuration"; \
+	else \
+		echo "~/.kube/config already exists, skipping Kubernetes config installation"; \
+		echo "💡 You can manually copy examples/kube-config.template if needed"; \
+	fi
+	@echo "✅ Configuration template installation complete"
+	@echo "📖 See examples/ directory for template documentation"
 
 # Create release archives
 .PHONY: release
