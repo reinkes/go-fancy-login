@@ -17,13 +17,13 @@ var (
 	version   = "dev"
 	buildTime = "unknown"
 	gitCommit = "unknown"
-	
+
 	// Command-line flags
-	verbose = flag.Bool("v", false, "Enable verbose output")
-	k9sFlag = flag.Bool("k", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
+	verbose       = flag.Bool("v", false, "Enable verbose output")
+	k9sFlag       = flag.Bool("k", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
 	forceAWSLogin = flag.Bool("force-aws-login", false, "Force AWS SSO login even if a valid session exists")
-	helpFlag = flag.Bool("h", false, "Show help message")
-	versionFlag = flag.Bool("version", false, "Show version information")
+	helpFlag      = flag.Bool("h", false, "Show help message")
+	versionFlag   = flag.Bool("version", false, "Show version information")
 )
 
 func main() {
@@ -71,7 +71,7 @@ func main() {
 	if err != nil {
 		logger.Die(fmt.Sprintf("Failed to select AWS profile: %v", err))
 	}
-	
+
 	// Set AWS_PROFILE environment variable for this process
 	os.Setenv("AWS_PROFILE", awsProfile)
 

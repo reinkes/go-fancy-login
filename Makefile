@@ -27,7 +27,9 @@ help:
 	@echo "  build         - Build for current platform"
 	@echo "  build-all     - Build for all supported platforms"
 	@echo "  clean         - Clean build artifacts"
-	@echo "  test          - Run tests"
+	@echo "  test          - Run tests with coverage report"
+	@echo "  test-short    - Run tests with minimal output"
+	@echo "  test-ci       - Run tests for CI with JUnit XML output"
 	@echo "  lint          - Run linter (requires golangci-lint)"
 	@echo "  install       - Install binary to GOPATH/bin"
 	@echo "  install-templates - Install configuration templates to ~/.aws and ~/.kube"
@@ -76,9 +78,31 @@ clean:
 .PHONY: test
 test:
 	@echo "🧪 Running tests..."
+	@mkdir -p dist/test-results
 	go fmt ./...
 	go vet ./...
-	go test -v ./...
+	go test -v -race -coverprofile=dist/test-results/coverage.out ./...
+	go tool cover -html=dist/test-results/coverage.out -o dist/test-results/coverage.html
+	@echo "✅ Tests complete! Coverage report: dist/test-results/coverage.html"
+
+# Run tests with short output
+.PHONY: test-short
+test-short:
+	@echo "🧪 Running tests (short)..."
+	go test ./...
+
+# Run tests and generate JUnit XML (for CI)
+.PHONY: test-ci
+test-ci:
+	@echo "🧪 Running tests for CI..."
+	@mkdir -p dist/test-results
+	go fmt ./...
+	go vet ./...
+	@if command -v gotestsum >/dev/null 2>&1; then \
+		gotestsum --junitfile dist/test-results/unittests.xml --format testname -- -race -coverprofile=dist/test-results/coverage.out ./...; \
+	else \
+		go test -race -coverprofile=dist/test-results/coverage.out ./...; \
+	fi
 
 # Run linter
 .PHONY: lint

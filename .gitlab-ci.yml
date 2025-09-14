@@ -30,9 +30,7 @@ build:
   script:
     - export PATH="$GOPATH/bin:$PATH"
     - make build
-    - make test
-    - mkdir -p dist/test-results
-    - gotestsum --junitfile dist/test-results/unittests.xml --format testname -- -v ./...
+    - make test-ci
   artifacts:
     reports:
       junit: dist/test-results/unittests.xml

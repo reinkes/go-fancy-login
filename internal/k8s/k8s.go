@@ -29,31 +29,31 @@ func NewK8sManager(cfg *config.Config, logger *utils.Logger) *K8sManager {
 // SelectKubernetesContext selects and switches Kubernetes context
 func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error) {
 	k8s.logger.FancyLog("Entered select_kubernetes_context")
-	
+
 	if k8s.shouldSkipK8sContext(awsProfile) {
 		return k8s.handleDEVProfile(awsProfile)
 	}
-	
+
 	// Load context mappings
 	mappings, err := config.LoadContextMappings()
 	if err != nil {
 		k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
 		mappings = []config.ContextMapping{}
 	}
-	
+
 	// Check for mapped context
 	for _, mapping := range mappings {
 		if config.MatchesPattern(awsProfile, mapping.Pattern) {
 			k8s.logger.FancyLog(fmt.Sprintf("Matched pattern: %s, using context: %s", mapping.Pattern, mapping.Context))
-			
+
 			if err := k8s.switchK8sContext(mapping.Context); err != nil {
 				k8s.logger.LogWarning(fmt.Sprintf("Failed to switch to context %s: %v", mapping.Context, err))
 			}
-			
+
 			return k8s.formatContextSummary(mapping.Context, awsProfile), nil
 		}
 	}
-	
+
 	// No mapping found, use fzf to select
 	context, err := k8s.selectContextWithFzf()
 	if err != nil {
@@ -61,11 +61,11 @@ func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error
 		// Return current context or fallback
 		return k8s.getCurrentContextSummary(awsProfile)
 	}
-	
+
 	if err := k8s.switchK8sContext(context); err != nil {
 		k8s.logger.LogWarning(fmt.Sprintf("Failed to switch to context %s: %v", context, err))
 	}
-	
+
 	return k8s.formatContextSummary(context, awsProfile), nil
 }
 
@@ -74,19 +74,19 @@ func (k8s *K8sManager) HandleK9sLaunch(awsProfile string) error {
 	if !strings.HasSuffix(awsProfile, "DEVENG") {
 		return nil
 	}
-	
+
 	if k8s.config.UseK9S {
 		return k8s.launchK9sWithNamespace(awsProfile)
 	}
-	
+
 	fmt.Printf("\n%sDo you want to open k9s in the derived namespace? (y/n): %s", config.Cyan, config.Reset)
 	var response string
 	fmt.Scanln(&response)
-	
+
 	if response == "y" {
 		return k8s.launchK9sWithNamespace(awsProfile)
 	}
-	
+
 	return nil
 }
 
@@ -104,7 +104,7 @@ func (k8s *K8sManager) handleDEVProfile(awsProfile string) (string, error) {
 		k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
 		mappings = []config.ContextMapping{}
 	}
-	
+
 	var mappedContext string
 	for _, mapping := range mappings {
 		if config.MatchesPattern(awsProfile, mapping.Pattern) {
@@ -112,14 +112,14 @@ func (k8s *K8sManager) handleDEVProfile(awsProfile string) (string, error) {
 			break
 		}
 	}
-	
+
 	// Load namespace mappings
 	namespaceMappings, err := config.LoadNamespaceMappings()
 	if err != nil {
 		k8s.logger.FancyLog(fmt.Sprintf("Failed to load namespace mappings: %v", err))
 		namespaceMappings = make(map[string]string)
 	}
-	
+
 	// Try to get namespace from profile
 	namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
 	if err == nil {
@@ -132,44 +132,44 @@ func (k8s *K8sManager) handleDEVProfile(awsProfile string) (string, error) {
 		return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s(ns: %s)%s",
 			config.Green, config.Reset, config.Cyan, namespace, config.Reset), nil
 	}
-	
+
 	if mappedContext != "" {
 		return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s",
 			config.Green, config.Reset, config.Bold, mappedContext, config.Reset), nil
 	}
-	
-	return fmt.Sprintf("%s🌱 Kubernetes Context:%s (skipped for DEV profile)", 
+
+	return fmt.Sprintf("%s🌱 Kubernetes Context:%s (skipped for DEV profile)",
 		config.Green, config.Reset), nil
 }
 
 // selectContextWithFzf uses fzf to select a Kubernetes context
 func (k8s *K8sManager) selectContextWithFzf() (string, error) {
 	k8s.logger.FancyLog("Selecting Kubernetes Context...")
-	
+
 	// Get available contexts
 	cmd := exec.Command("kubectl", "config", "get-contexts", "-o", "name")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get contexts: %w", err)
 	}
-	
+
 	contexts := strings.TrimSpace(string(output))
 	if contexts == "" {
 		return "", fmt.Errorf("no contexts available")
 	}
-	
+
 	// Use fzf to select
 	fzfCmd := exec.Command("fzf", "--prompt=Select Kubernetes Context: ")
 	fzfCmd.Stdin = strings.NewReader(contexts)
-	
+
 	result, err := fzfCmd.Output()
 	if err != nil {
 		return "", err
 	}
-	
+
 	context := strings.TrimSpace(string(result))
 	k8s.logger.FancyLog(fmt.Sprintf("K8s context selected: %s", context))
-	
+
 	return context, nil
 }
 
@@ -182,7 +182,7 @@ func (k8s *K8sManager) switchK8sContext(context string) error {
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 	}
-	
+
 	cmd := exec.Command("kubectl", "config", "use-context", context)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -194,10 +194,10 @@ func (k8s *K8sManager) getCurrentContextSummary(awsProfile string) (string, erro
 	cmd := exec.Command("kubectl", "config", "current-context")
 	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Sprintf("%s🌱 Kubernetes Context:%s (none selected)", 
+		return fmt.Sprintf("%s🌱 Kubernetes Context:%s (none selected)",
 			config.Green, config.Reset), nil
 	}
-	
+
 	currentContext := strings.TrimSpace(string(output))
 	return k8s.formatContextSummary(currentContext, awsProfile), nil
 }
@@ -208,7 +208,7 @@ func (k8s *K8sManager) formatContextSummary(context, awsProfile string) string {
 	if err != nil {
 		namespaceMappings = make(map[string]string)
 	}
-	
+
 	namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
 	if err == nil {
 		k8s.setITerm2Namespace(namespace)
@@ -216,7 +216,7 @@ func (k8s *K8sManager) formatContextSummary(context, awsProfile string) string {
 			config.Green, config.Reset, config.Bold, context, config.Reset,
 			config.Cyan, namespace, config.Reset)
 	}
-	
+
 	return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s",
 		config.Green, config.Reset, config.Bold, context, config.Reset)
 }
@@ -226,14 +226,14 @@ func (k8s *K8sManager) setITerm2Namespace(namespace string) {
 	if namespace == "" {
 		return
 	}
-	
+
 	switch runtime.GOOS {
 	case "darwin":
 		// macOS iTerm2
 		if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
 			// Set tab title
 			fmt.Printf("\033]1;ns:%s\007", namespace)
-			
+
 			// Set badge
 			badge := fmt.Sprintf("🟢 ns:%s", namespace)
 			encoded := base64.StdEncoding.EncodeToString([]byte(badge))
@@ -257,23 +257,23 @@ func (k8s *K8sManager) launchK9sWithNamespace(awsProfile string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load namespace mappings: %w", err)
 	}
-	
+
 	namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
 	if err != nil {
 		k8s.logger.LogError(fmt.Sprintf("Unable to derive namespace from profile: %s", awsProfile))
 		return err
 	}
-	
+
 	k8s.logger.FancyLog(fmt.Sprintf("Launching k9s in %s.", namespace))
-	
+
 	cmd := exec.Command("k9s", "-n", namespace)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	
+
 	// Inherit current environment and set AWS_PROFILE
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, fmt.Sprintf("AWS_PROFILE=%s", awsProfile))
-	
+
 	return cmd.Run()
 }

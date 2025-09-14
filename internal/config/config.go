@@ -22,26 +22,26 @@ const (
 
 // Config holds all configuration for fancy-login
 type Config struct {
-	NamespaceConfig  string
-	AWSProfileTemp   string
-	DefaultRegion    string
-	FancyVerbose     bool
-	ForceAWSLogin    bool
-	UseK9S           bool
-	FancyDebug       bool
-	BinDir           string
-	AWSDir           string
-	KubeDir          string
+	NamespaceConfig string
+	AWSProfileTemp  string
+	DefaultRegion   string
+	FancyVerbose    bool
+	ForceAWSLogin   bool
+	UseK9S          bool
+	FancyDebug      bool
+	BinDir          string
+	AWSDir          string
+	KubeDir         string
 }
 
 // NewConfig creates a new configuration with defaults
 func NewConfig() *Config {
 	homeDir, _ := os.UserHomeDir()
-	
+
 	// Platform-specific paths
 	var binDir string
 	var awsProfileTemp string
-	
+
 	if runtime.GOOS == "windows" {
 		// Windows: Use AppData\Local for binaries, temp dir for profile scripts
 		binDir = filepath.Join(homeDir, "AppData", "Local", "fancy-login")
@@ -51,7 +51,7 @@ func NewConfig() *Config {
 		binDir = filepath.Join(homeDir, ".local", "bin")
 		awsProfileTemp = "/tmp/aws_profile.sh"
 	}
-	
+
 	return &Config{
 		NamespaceConfig: getEnvWithDefault("FANCY_NAMESPACE_CONFIG", filepath.Join(binDir, ".fancy-namespaces.conf")),
 		AWSProfileTemp:  getEnvWithDefault("FANCY_PROFILE_TEMP", awsProfileTemp),
@@ -74,12 +74,12 @@ type ContextMapping struct {
 func LoadContextMappings() ([]ContextMapping, error) {
 	cfg := NewConfig()
 	contextConf := filepath.Join(cfg.BinDir, ".fancy-contexts.conf")
-	
+
 	// Check for local config file first
 	if _, err := os.Stat(".fancy-contexts.conf"); err == nil {
 		contextConf = ".fancy-contexts.conf"
 	}
-	
+
 	return parseContextFile(contextConf)
 }
 
@@ -96,16 +96,16 @@ func parseContextFile(filename string) ([]ContextMapping, error) {
 		return nil, fmt.Errorf("failed to open context config %s: %w", filename, err)
 	}
 	defer file.Close()
-	
+
 	var mappings []ContextMapping
 	scanner := bufio.NewScanner(file)
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			pattern := strings.TrimSpace(parts[0])
@@ -116,7 +116,7 @@ func parseContextFile(filename string) ([]ContextMapping, error) {
 			})
 		}
 	}
-	
+
 	return mappings, scanner.Err()
 }
 
@@ -127,16 +127,16 @@ func parseNamespaceFile(filename string) (map[string]string, error) {
 		return nil, fmt.Errorf("failed to open namespace config %s: %w", filename, err)
 	}
 	defer file.Close()
-	
+
 	mappings := make(map[string]string)
 	scanner := bufio.NewScanner(file)
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			code := strings.TrimSpace(parts[0])
@@ -144,7 +144,7 @@ func parseNamespaceFile(filename string) (map[string]string, error) {
 			mappings[code] = project
 		}
 	}
-	
+
 	return mappings, scanner.Err()
 }
 
@@ -153,19 +153,19 @@ func GetNamespaceFromProfile(profile string, namespaceMappings map[string]string
 	// Match pattern like XXX_YYY_DEVENG
 	re := regexp.MustCompile(`^([A-Z]+)_([A-Z]+)_DEVENG$`)
 	matches := re.FindStringSubmatch(profile)
-	
+
 	if len(matches) != 3 {
 		return "", fmt.Errorf("profile %s does not match DEVENG pattern", profile)
 	}
-	
+
 	projectCode := matches[1]
 	environment := strings.ToLower(matches[2])
-	
+
 	projectName, exists := namespaceMappings[projectCode]
 	if !exists {
 		return "", fmt.Errorf("project code %s not found in namespace config", projectCode)
 	}
-	
+
 	return fmt.Sprintf("%s-%s", environment, projectName), nil
 }
 
