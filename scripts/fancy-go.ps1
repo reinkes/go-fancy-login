@@ -7,9 +7,12 @@ function fancy-go {
         [string[]]$Arguments
     )
     
-    # Run the Go binary with all arguments
-    if (& fancy-login-go.exe @Arguments) {
-        # Source the AWS profile script if it exists
+    # Run the Go binary with all arguments and capture exit code
+    & fancy-login-go.exe @Arguments
+    $exitCode = $LASTEXITCODE
+
+    # Source the AWS profile script if it exists and the command succeeded
+    if ($exitCode -eq 0) {
         $profileScript = "$env:TEMP\aws_profile.ps1"
         if (Test-Path $profileScript) {
             . $profileScript
