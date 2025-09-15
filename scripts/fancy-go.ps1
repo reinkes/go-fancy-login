@@ -21,5 +21,4 @@ function fancy-go {
 # Create an alias for convenience
 Set-Alias -Name fancy -Value fancy-go
 
-# Export both the function and alias
-Export-ModuleMember -Function fancy-go -Alias fancy
+# Export both the function and alias (not needed for regular scripts)
