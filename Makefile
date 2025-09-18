@@ -27,9 +27,12 @@ help:
 	@echo "  build         - Build for current platform"
 	@echo "  build-all     - Build for all supported platforms"
 	@echo "  clean         - Clean build artifacts"
-	@echo "  test          - Run tests"
+	@echo "  test          - Run tests with coverage report"
+	@echo "  test-short    - Run tests with minimal output"
+	@echo "  test-ci       - Run tests for CI with JUnit XML output"
 	@echo "  lint          - Run linter (requires golangci-lint)"
 	@echo "  install       - Install binary to GOPATH/bin"
+	@echo "  install-templates - Install configuration templates to ~/.aws and ~/.kube"
 	@echo "  release       - Create release archives"
 	@echo "  docker        - Build Docker image"
 	@echo "  version       - Show version info"
@@ -75,9 +78,31 @@ clean:
 .PHONY: test
 test:
 	@echo "🧪 Running tests..."
+	@mkdir -p dist/test-results
 	go fmt ./...
 	go vet ./...
-	go test -v ./...
+	go test -v -race -coverprofile=dist/test-results/coverage.out ./...
+	go tool cover -html=dist/test-results/coverage.out -o dist/test-results/coverage.html
+	@echo "✅ Tests complete! Coverage report: dist/test-results/coverage.html"
+
+# Run tests with short output
+.PHONY: test-short
+test-short:
+	@echo "🧪 Running tests (short)..."
+	go test ./...
+
+# Run tests and generate JUnit XML (for CI)
+.PHONY: test-ci
+test-ci:
+	@echo "🧪 Running tests for CI..."
+	@mkdir -p dist/test-results
+	go fmt ./...
+	go vet ./...
+	@if command -v gotestsum >/dev/null 2>&1; then \
+		gotestsum --junitfile dist/test-results/unittests.xml --format testname -- -race -coverprofile=dist/test-results/coverage.out ./...; \
+	else \
+		go test -race -coverprofile=dist/test-results/coverage.out ./...; \
+	fi
 
 # Run linter
 .PHONY: lint
@@ -95,6 +120,30 @@ install: build
 	@echo "📦 Installing $(BINARY_NAME)..."
 	cp $(BINARY_NAME) $$GOPATH/bin/
 	@echo "✅ Installed to $$GOPATH/bin/$(BINARY_NAME)"
+
+# Install configuration templates
+.PHONY: install-templates
+install-templates:
+	@echo "📋 Installing configuration templates..."
+	@mkdir -p ~/.aws ~/.kube
+	@if [ ! -f ~/.aws/config ]; then \
+		echo "Installing AWS config template to ~/.aws/config"; \
+		cp examples/aws-config.template ~/.aws/config; \
+		echo "⚠️  Please edit ~/.aws/config with your actual AWS configuration"; \
+	else \
+		echo "~/.aws/config already exists, skipping AWS config installation"; \
+		echo "💡 You can manually copy examples/aws-config.template if needed"; \
+	fi
+	@if [ ! -f ~/.kube/config ]; then \
+		echo "Installing Kubernetes config template to ~/.kube/config"; \
+		cp examples/kube-config.template ~/.kube/config; \
+		echo "⚠️  Please edit ~/.kube/config with your actual cluster configuration"; \
+	else \
+		echo "~/.kube/config already exists, skipping Kubernetes config installation"; \
+		echo "💡 You can manually copy examples/kube-config.template if needed"; \
+	fi
+	@echo "✅ Configuration template installation complete"
+	@echo "📖 See examples/ directory for template documentation"
 
 # Create release archives
 .PHONY: release

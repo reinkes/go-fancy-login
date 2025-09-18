@@ -63,40 +63,24 @@ if [[ ! -f "go.mod" ]]; then
   go mod init fancy-login
 fi
 
+# Get version info
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev-$(git rev-parse --short HEAD)")
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+GIT_COMMIT=$(git rev-parse --short HEAD)
+
 # Build the binary
 fancy_log "Building binary to $BIN_DIR/fancy-login-go"
-go build -o "$BIN_DIR/fancy-login-go" ./cmd
+go build -ldflags="-s -w \
+  -X 'main.version=$VERSION' \
+  -X 'main.buildTime=$BUILD_TIME' \
+  -X 'main.gitCommit=$GIT_COMMIT'" \
+  -o "$BIN_DIR/fancy-login-go" ./cmd
 
 # Make it executable
 fancy_log "Making binary executable"
 chmod +x "$BIN_DIR/fancy-login-go"
 
-# Copy config files
-fancy_log "Copying .fancy-namespaces.conf to $BIN_DIR/.fancy-namespaces.conf"
-cp "$PROJECT_DIR/.fancy-namespaces.conf" "$BIN_DIR/.fancy-namespaces.conf"
 
-if [ -f "$PROJECT_DIR/.fancy-contexts.conf" ]; then
-  fancy_log "Copying .fancy-contexts.conf to $BIN_DIR/.fancy-contexts.conf"
-  cp "$PROJECT_DIR/.fancy-contexts.conf" "$BIN_DIR/.fancy-contexts.conf"
-fi
-
-# Copy AWS config if it exists
-if [ -f "$PROJECT_DIR/../aws/config" ]; then
-  echo "📦 Copying AWS config..."
-  fancy_log "Creating AWS dir at $AWS_DIR"
-  mkdir -p "$AWS_DIR"
-  fancy_log "Copying aws/config to $AWS_DIR/config"
-  cp "$PROJECT_DIR/../aws/config" "$AWS_DIR/config"
-fi
-
-# Copy kube config if it exists
-if [ -f "$PROJECT_DIR/../k8s/config" ]; then
-  echo "📦 Copying Kubernetes config..."
-  fancy_log "Creating kube dir at $KUBE_DIR"
-  mkdir -p "$KUBE_DIR"
-  fancy_log "Copying k8s/config to $KUBE_DIR/config"
-  cp "$PROJECT_DIR/../k8s/config" "$KUBE_DIR/config"
-fi
 
 # Print installation complete message
 echo "\n✅ Go version installation complete!"

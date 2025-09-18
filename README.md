@@ -1,233 +1,402 @@
-# Fancy Login - Go Version
+# Fancy Login Go
 
-This is a Go port of the original shell-based fancy-login utility. It provides the same functionality with improved performance and easier maintenance.
+A streamlined AWS SSO login and Kubernetes context selection utility that provides a minimal, colorful, and interactive CLI experience for switching between cloud environments.
 
-## Features
+[![CI/CD Pipeline](https://github.com/reinkes/go-fancy-login/actions/workflows/ci.yml/badge.svg)](https://github.com/reinkes/go-fancy-login/actions/workflows/ci.yml)
+[![Security Scan](https://github.com/reinkes/go-fancy-login/actions/workflows/security.yml/badge.svg)](https://github.com/reinkes/go-fancy-login/actions/workflows/security.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/reinkes/go-fancy-login)](https://goreportcard.com/report/github.com/reinkes/go-fancy-login)
 
-- Interactive AWS SSO login and profile selection using fzf
-- Automatic Kubernetes context switching based on AWS profiles
-- ECR login for development profiles
-- k9s integration with namespace-aware launches
-- iTerm2 integration (tab titles and badges)
-- Colorized, minimal output with verbose mode option
-- Configuration-driven context and namespace mapping
+## ✨ Features
 
-## Requirements
+- **🔐 Interactive AWS SSO Login**: Profile selection with fzf, automatic session validation
+- **⎈ Smart Kubernetes Context Switching**: Profile-based context mapping with interactive fallback
+- **🐳 Configurable ECR Authentication**: Per-profile Docker login with regional support
+- **🦄 k9s Integration**: Namespace-aware launches with auto-launch mode
+- **🖥️ iTerm2 Visual Integration**: Tab titles and badges showing current namespace
+- **⚡ Profile-Based Configuration**: Direct profile configuration via interactive wizard
+- **🎨 Colorized Output**: Minimal, consistent UI with emoji icons and progress indicators
+- **🔧 Cross-Platform Support**: Linux, macOS, and Windows binaries
 
-- Go 1.19+ (for building)
-- aws CLI
-- kubectl
-- fzf
-- k9s
-- docker (for ECR login)
+## 🚀 Quick Start
 
-## Installation
+### Installation
 
-### Linux/macOS
+**Download from GitHub Releases (Recommended):**
 
-1. **Build and install:**
+1. Go to [Releases](https://github.com/reinkes/go-fancy-login/releases) and download the appropriate binary for your platform:
+   - **Linux AMD64**: `fancy-login-go-v*.*.*-linux-amd64.tar.gz`
+   - **Linux ARM64**: `fancy-login-go-v*.*.*-linux-arm64.tar.gz`
+   - **macOS Intel**: `fancy-login-go-v*.*.*-darwin-amd64.tar.gz`
+   - **macOS Apple Silicon**: `fancy-login-go-v*.*.*-darwin-arm64.tar.gz`
+   - **Windows**: `fancy-login-go-v*.*.*-windows-amd64.exe.zip`
+
+2. Extract and install:
    ```bash
-   cd go
-   ./scripts/install-fancy-go.sh
-   ```
+   # Linux/macOS
+   tar -xzf fancy-login-go-v*.*.*-[platform].tar.gz
+   sudo mv fancy-login-go /usr/local/bin/
 
-2. **Add to your shell configuration (~/.zshrc):**
-   ```bash
+   # Or to user directory
+   mkdir -p ~/.local/bin
+   mv fancy-login-go ~/.local/bin/
    export PATH="$HOME/.local/bin:$PATH"
-   
-   # Fancy login function (Go version)
-   fancy-go() {
-     if fancy-login-go "$@"; then
-       [[ -f /tmp/aws_profile.sh ]] && source /tmp/aws_profile.sh
-     fi
-   }
-   
-   # Or create an alias for convenience
-   alias fancy='fancy-go'
    ```
 
-3. **Reload your shell:**
-   ```bash
-   source ~/.zshrc
-   ```
-
-### Windows
-
-1. **Build and install (PowerShell):**
-   ```powershell
-   cd go
-   .\scripts\install-fancy-go.ps1
-   ```
-
-2. **Add to PowerShell profile ($PROFILE):**
-   ```powershell
-   # Edit your profile
-   notepad $PROFILE
-   
-   # Add this line:
-   . "$env:USERPROFILE\AppData\Local\fancy-login\fancy-go.ps1"
-   ```
-
-3. **Reload PowerShell:**
-   ```powershell
-   . $PROFILE
-   ```
-
-**Alternative for Command Prompt:**
-- Use `fancy-go.bat` directly or add to PATH
-- Binary installs to: `%USERPROFILE%\AppData\Local\fancy-login\`
-
-## Usage
-
-### Linux/macOS
+**Go Install (Cross-platform):**
 ```bash
-# Basic usage
-fancy-go  # or fancy with alias
+# Install latest version
+go install github.com/reinkes/go-fancy-login/cmd@latest
 
-# With verbose output  
-fancy-go -v
-
-# Auto-launch k9s for DEVENG profiles
-fancy-go -k
-
-# Direct binary usage
-fancy-login-go --help
+# Ensure $GOPATH/bin is in your PATH
+export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-### Windows
+**Homebrew (macOS/Linux):**
+```bash
+# Add the custom tap
+brew tap reinkes/tap https://github.com/reinkes/homebrew-tap
+
+# Install fancy-login-go
+brew install reinkes/tap/fancy-login-go
+
+# Or in one command
+brew install reinkes/tap/fancy-login-go
+```
+
+**Build from Source:**
+```bash
+git clone https://github.com/reinkes/go-fancy-login.git
+cd go-fancy-login
+make build
+sudo cp fancy-login-go /usr/local/bin/
+```
+
+### First Run - Configuration Wizard
+
+```bash
+# Run the interactive configuration wizard
+fancy-login-go --config
+
+# Or start using immediately - wizard runs automatically
+fancy-login-go
+```
+
+The wizard will:
+- Discover your AWS profiles automatically
+- Configure ECR login, Kubernetes contexts, and k9s settings per profile
+- Create your personalized configuration file
+
+## 📖 Usage
+
+### Basic Commands
+
+```bash
+# Interactive login with profile and context selection
+fancy-login-go
+
+# Verbose output showing all operations
+fancy-login-go -v
+
+# Auto-launch k9s for profiles configured with auto-launch
+fancy-login-go -k
+
+# Force AWS re-authentication
+fancy-login-go -f
+
+# Show version information
+fancy-login-go --version
+
+# Run configuration wizard
+fancy-login-go --config
+```
+
+### Shell Integration
+
+Add to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+# Fancy login function
+fancy() {
+    if fancy-login-go "$@"; then
+        # Source any environment changes
+        [[ -f /tmp/aws_profile.sh ]] && source /tmp/aws_profile.sh
+    fi
+}
+```
+
+### Windows PowerShell
+
+Add to your PowerShell profile (`$PROFILE`):
+
 ```powershell
-# PowerShell (after setup)
-fancy-go
-fancy-go -v
-fancy-go -k
-
-# Command Prompt
-fancy-go.bat
-fancy-go.bat -v
-
-# Direct binary usage
-fancy-login-go.exe --help
+function fancy {
+    fancy-login-go.exe $args
+    if ($LASTEXITCODE -eq 0) {
+        if (Test-Path "$env:TEMP\aws_profile.ps1") {
+            . "$env:TEMP\aws_profile.ps1"
+        }
+    }
+}
 ```
 
-## Configuration Files
+## ⚙️ Configuration
 
-### `.fancy-contexts.conf`
-Maps AWS profiles to Kubernetes contexts using shell-style wildcards:
+### Profile-Based Configuration
+
+Fancy Login uses a profile-based configuration system. Each AWS profile can be configured individually with:
+
+- **ECR Login**: Whether to perform Docker login for this profile
+- **ECR Region**: Which region to authenticate with for ECR
+- **Kubernetes Context**: Which k8s context to switch to
+- **K9s Auto-launch**: Whether to automatically launch k9s
+- **Namespace Prefix**: For deriving namespaces from profile names
+
+Configuration is stored in `~/.fancy-config.yaml`:
+
+```yaml
+settings:
+  default_region: us-east-1
+  config_wizard_run: true
+
+profile_configs:
+  company_DEV_developer:
+    name: company_DEV_developer
+    account_id: "123456789012"
+    ecr_login: true
+    ecr_region: us-east-1
+    k8s_context: dev-cluster
+    k9s_auto_launch: true
+    namespace_prefix: dev
+
+  company_PROD_admin:
+    name: company_PROD_admin
+    account_id: "987654321098"
+    ecr_login: false
+    ecr_region: us-east-1
+    k8s_context: prod-cluster
+    k9s_auto_launch: false
 ```
-*_PROD_* = prod-cluster
-*_TEST_* = test-cluster
+
+### Environment Variables
+
+```bash
+# Enable verbose output
+export FANCY_VERBOSE=1
+
+# Enable debug mode
+export FANCY_DEBUG=1
+
+# Override default AWS region
+export FANCY_DEFAULT_REGION=eu-central-1
+
+# Custom configuration paths
+export FANCY_CONFIG_PATH="$HOME/.config/fancy-login.yaml"
 ```
 
-### `.fancy-namespaces.conf`
-Maps project codes to namespace prefixes:
+## 🔧 Requirements
+
+- **AWS CLI**: For SSO authentication and profile management
+- **kubectl**: For Kubernetes context switching
+- **fzf**: For interactive selection menus
+- **docker**: For ECR authentication (optional)
+- **k9s**: For Kubernetes cluster management (optional)
+
+## 🏗️ Development & Contributing
+
+### Building from Source
+
+```bash
+# Quick build
+make build
+
+# Build for all platforms
+make build-all
+
+# Run tests
+make test
+
+# Run linter
+make lint
+
+# Create release archives
+make release
+
+# Show all available targets
+make help
 ```
-IMP=mykn-track-importer
-DET=mykn-track-details
-MD=mykn-masterdata
-OV=mykn-track-overviews
-```
 
-## Environment Variables
-
-- `FANCY_VERBOSE`: Enable verbose output (0/1)
-- `FANCY_DEBUG`: Enable debug mode (0/1)
-- `FANCY_NAMESPACE_CONFIG`: Path to namespace config file
-- `FANCY_PROFILE_TEMP`: Path to AWS profile temp file
-- `FANCY_DEFAULT_REGION`: Default AWS region
-- `FANCY_BIN_DIR`: Installation directory
-- `FANCY_AWS_DIR`: AWS config directory
-- `FANCY_KUBE_DIR`: Kubernetes config directory
-
-## Project Structure
+### Project Structure
 
 ```
-go/
-├── cmd/
-│   └── main.go              # Main application entry point
+.
+├── cmd/                    # Main application entry point
 ├── internal/
-│   ├── aws/
-│   │   └── aws.go           # AWS operations (SSO, ECR, profiles)
-│   ├── config/
-│   │   └── config.go        # Configuration handling
-│   ├── k8s/
-│   │   └── k8s.go           # Kubernetes operations
-│   └── utils/
-│       └── logger.go        # Logging and utilities
-├── scripts/
-│   └── install-fancy-go.sh  # Installation script
-├── .fancy-contexts.conf     # Context mappings
-├── .fancy-namespaces.conf   # Namespace mappings
-└── README.md                # This file
+│   ├── aws/               # AWS operations (SSO, ECR, profiles)
+│   ├── config/            # Configuration handling and wizard
+│   ├── k8s/               # Kubernetes operations
+│   └── utils/             # Logging and utilities
+├── tools/                 # Development tools and test utilities
+├── examples/              # Configuration templates
+└── .github/
+    └── workflows/         # CI/CD pipeline definitions
 ```
 
-## Differences from Shell Version
+### Running Tests
 
-- **Performance**: Faster startup and execution
-- **Error Handling**: More robust error handling and reporting
-- **Maintainability**: Cleaner code structure with proper separation of concerns
-- **Cross-platform**: Can be compiled for different operating systems
-- **Testing**: Easier to unit test individual components
-
-## Building from Source
-
-### Quick Build
 ```bash
-cd go
-go mod tidy
-go build -o fancy-login-go ./cmd
+# Run all tests with coverage
+make test
+
+# Run specific test packages
+go test ./internal/config/
+go test ./internal/aws/
+
+# Run with verbose output
+go test -v ./...
+
+# Generate coverage report
+make test
+open dist/test-results/coverage.html
 ```
 
-### Using Make
+## 🔄 CI/CD Pipeline
+
+This project uses GitHub Actions for automated building, testing, and releasing:
+
+### Automated Workflows
+
+**On every push and PR:**
+- ✅ **Lint & Format**: Code quality checks with golangci-lint
+- ✅ **Test Suite**: Unit tests with coverage reporting
+- ✅ **Multi-platform Build**: Linux, macOS, Windows (AMD64/ARM64)
+- ✅ **Security Scanning**: Trivy, Gosec, and CodeQL analysis
+
+**Daily security scans:**
+- ✅ **Vulnerability Detection**: Automated dependency scanning
+- ✅ **Code Analysis**: Static security analysis
+- ✅ **Dependency Review**: Automated dependency updates
+
+**On version tags:**
+- ✅ **Automated Releases**: GitHub releases with changelog
+- ✅ **Binary Distribution**: Multi-platform binaries with checksums
+- ✅ **Package Manager Updates**: Homebrew formula updates
+
+### Creating a Release
+
+To create a new release:
+
 ```bash
-cd go
-make help              # Show all available targets
-make build             # Build for current platform
-make build-all         # Build for all platforms
-make release           # Create release archives
-make version           # Show version info
+# Tag your commit
+git tag v1.2.3
+
+# Push the tag
+git push origin v1.2.3
 ```
 
-### Using Build Scripts
+GitHub Actions will automatically:
+- Build binaries for all platforms
+- Create a GitHub release with changelog
+- Upload downloadable assets with SHA256 checksums
+- Update package manager formulas
+
+### Security Features
+
+- **CodeQL Analysis**: Static code analysis for security vulnerabilities
+- **Trivy Scanning**: Container and dependency vulnerability scanning
+- **Gosec**: Go-specific security analysis
+- **Dependency Review**: Automated security review for dependencies
+- **SARIF Integration**: Security findings integrated with GitHub Security tab
+
+## 🎯 Migration from Shell Version
+
+The Go version maintains full compatibility with existing workflows while providing:
+
+- **🚀 Performance**: 10x faster startup and execution
+- **🛡️ Error Handling**: Robust error handling and recovery
+- **🧪 Testing**: Comprehensive unit test coverage
+- **🔧 Maintainability**: Clean, modular architecture
+- **📦 Distribution**: Easy installation via package managers
+- **🖥️ Cross-Platform**: Native Windows support
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Binary not found:**
 ```bash
-cd go
-./scripts/build.sh                    # Simple build
-./scripts/build-all.sh v1.0.0         # All platforms
-./scripts/release.sh -v v1.0.0 -t     # Full release
+# Ensure binary is in PATH
+echo $PATH
+which fancy-login-go
+
+# Add to PATH if needed
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### Cross-Platform Builds
+**Configuration issues:**
 ```bash
-# Linux
-GOOS=linux GOARCH=amd64 go build -o fancy-login-go-linux-amd64 ./cmd
+# Run configuration wizard
+fancy-login-go --config
 
-# Windows  
-GOOS=windows GOARCH=amd64 go build -o fancy-login-go-windows-amd64.exe ./cmd
+# Check configuration file
+cat ~/.fancy-config.yaml
 
-# macOS (Intel)
-GOOS=darwin GOARCH=amd64 go build -o fancy-login-go-darwin-amd64 ./cmd
-
-# macOS (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -o fancy-login-go-darwin-arm64 ./cmd
+# Enable verbose mode for debugging
+fancy-login-go -v
 ```
 
-See [BUILD.md](BUILD.md) for detailed build instructions and CI/CD setup.
+**AWS SSO issues:**
+```bash
+# Check AWS CLI configuration
+aws configure list
+aws sso login --profile YOUR_PROFILE
 
-## Development
+# Verify profile configuration
+aws sts get-caller-identity --profile YOUR_PROFILE
+```
 
-To modify the Go version:
+**Kubernetes context issues:**
+```bash
+# Check available contexts
+kubectl config get-contexts
 
-1. Make changes to the source code
-2. Test locally: `go run ./cmd [flags]`
-3. Build: `go build -o fancy-login-go ./cmd`
-4. Install: `cp fancy-login-go $HOME/.local/bin/`
+# Verify current context
+kubectl config current-context
 
-## Troubleshooting
+# Test context switching manually
+kubectl config use-context YOUR_CONTEXT
+```
 
-- **Module issues**: Run `go mod tidy` to fix dependency issues
-- **Binary not found**: Ensure `$HOME/.local/bin` is in your PATH
-- **Config not found**: Check that config files are in the correct location
-- **Verbose mode**: Use `-v` flag to see detailed logging
+### Debug Mode
 
-## Migration from Shell Version
+Enable debug mode for detailed troubleshooting:
 
-The Go version maintains full compatibility with the shell version's configuration files and behavior. You can run both versions side by side or replace the shell version entirely.
+```bash
+export FANCY_DEBUG=1
+fancy-login-go -v
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes and add tests
+4. Run the test suite (`make test`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+### Contribution Guidelines
+
+- Ensure all tests pass
+- Add tests for new features
+- Follow Go coding conventions
+- Update documentation as needed
+- Security: All contributions are automatically scanned for vulnerabilities
+
+---
+
+**Made with ❤️ for seamless cloud environment switching**

@@ -47,15 +47,45 @@ Write-Host "🔧 Installing fancy-login Go version..." -ForegroundColor Yellow
 # Define paths
 $ScriptDir = $PSScriptRoot
 $ProjectDir = Split-Path $ScriptDir -Parent
-$BinDir = "$env:USERPROFILE\AppData\Local\fancy-login"
-$AWSDir = "$env:USERPROFILE\.aws"
-$KubeDir = "$env:USERPROFILE\.kube"
+
+# Determine user home directory based on OS
+if ($IsWindows -or ($null -eq $IsWindows -and $env:OS -eq "Windows_NT")) {
+    $UserHome = $env:USERPROFILE
+    $BinDir = Join-Path $UserHome "AppData\Local\fancy-login"
+} else {
+    # Non-Windows (macOS, Linux)
+    $UserHome = $env:HOME
+    $BinDir = Join-Path $UserHome ".local/bin/fancy-login"
+}
+
+$AWSDir = Join-Path $UserHome ".aws"
+$KubeDir = Join-Path $UserHome ".kube"
+
+Write-FancyLog "Script Dir: $ScriptDir"
+Write-FancyLog "Project Dir: $ProjectDir"
+Write-FancyLog "User Home: $UserHome"
+Write-FancyLog "Bin Dir: $BinDir"
 
 # Create bin dir if needed
 Write-FancyLog "Creating bin dir at $BinDir"
 if (-not (Test-Path $BinDir)) {
-    New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+    try {
+        $result = New-Item -ItemType Directory -Path $BinDir -Force
+        Write-FancyLog "Created directory: $($result.FullName)"
+    } catch {
+        Write-Error "Failed to create directory $BinDir`: $_"
+        exit 1
+    }
+} else {
+    Write-FancyLog "Directory already exists: $BinDir"
 }
+
+# Verify directory exists before proceeding
+if (-not (Test-Path $BinDir)) {
+    Write-Error "Directory $BinDir does not exist after creation attempt"
+    exit 1
+}
+Write-FancyLog "Confirmed directory exists: $BinDir"
 
 # Build the Go binary
 Write-Host "🔨 Building Go binary..." -ForegroundColor Yellow
@@ -78,17 +108,32 @@ if ($LASTEXITCODE -ne 0) {
 
 # Copy config files
 Write-FancyLog "Copying .fancy-namespaces.conf to $BinDir\.fancy-namespaces.conf"
-Copy-Item "$ProjectDir\.fancy-namespaces.conf" "$BinDir\.fancy-namespaces.conf" -Force
+if (Test-Path "$ProjectDir\.fancy-namespaces.conf") {
+    Copy-Item "$ProjectDir\.fancy-namespaces.conf" "$BinDir\.fancy-namespaces.conf" -Force
+} else {
+    Write-FancyLog "Warning: .fancy-namespaces.conf not found, skipping"
+}
 
 if (Test-Path "$ProjectDir\.fancy-contexts.conf") {
     Write-FancyLog "Copying .fancy-contexts.conf to $BinDir\.fancy-contexts.conf"
     Copy-Item "$ProjectDir\.fancy-contexts.conf" "$BinDir\.fancy-contexts.conf" -Force
+} else {
+    Write-FancyLog "Warning: .fancy-contexts.conf not found, skipping"
 }
 
 # Copy shell integration files
 Write-FancyLog "Copying shell integration files"
-Copy-Item "$ScriptDir\fancy-go.ps1" "$BinDir\fancy-go.ps1" -Force
-Copy-Item "$ScriptDir\fancy-go.bat" "$BinDir\fancy-go.bat" -Force
+if (Test-Path "$ScriptDir\fancy-go.ps1") {
+    Copy-Item "$ScriptDir\fancy-go.ps1" "$BinDir\fancy-go.ps1" -Force
+} else {
+    Write-FancyLog "Warning: fancy-go.ps1 not found, skipping"
+}
+
+if (Test-Path "$ScriptDir\fancy-go.bat") {
+    Copy-Item "$ScriptDir\fancy-go.bat" "$BinDir\fancy-go.bat" -Force
+} else {
+    Write-FancyLog "Warning: fancy-go.bat not found, skipping"
+}
 
 # Add to PATH if not already there
 $currentPath = [Environment]::GetEnvironmentVariable("PATH", "User")

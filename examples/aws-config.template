@@ -1,0 +1,43 @@
+# AWS Config Template for fancy-login
+# Copy this file to ~/.aws/config and customize the values below
+#
+# This template includes common AWS SSO profiles for development and production environments.
+# Replace placeholder values with your actual AWS SSO configuration.
+
+[default]
+region = us-east-1
+output = json
+
+# Development Environment Profile
+[profile YOUR_PROJECT_DEV_PROFILE]
+sso_start_url = https://YOUR_SSO_DOMAIN.awsapps.com/start
+sso_region = us-east-1
+sso_account_id = YOUR_DEV_ACCOUNT_ID
+sso_role_name = YourDevRoleName
+region = us-east-1
+output = json
+
+# Production Environment Profile
+[profile YOUR_PROJECT_PROD_PROFILE]
+sso_start_url = https://YOUR_SSO_DOMAIN.awsapps.com/start
+sso_region = us-east-1
+sso_account_id = YOUR_PROD_ACCOUNT_ID
+sso_role_name = YourProdRoleName
+region = us-east-1
+output = json
+
+# Additional profiles can be added following the same pattern
+# [profile YOUR_PROJECT_STAGING_PROFILE]
+# sso_start_url = https://YOUR_SSO_DOMAIN.awsapps.com/start
+# sso_region = us-east-1
+# sso_account_id = YOUR_STAGING_ACCOUNT_ID
+# sso_role_name = YourStagingRoleName
+# region = us-east-1
+# output = json
+
+# Configuration Notes:
+# - Replace YOUR_PROJECT with your actual project name
+# - Replace YOUR_SSO_DOMAIN with your AWS SSO domain
+# - Replace account IDs and role names with actual values
+# - Profiles containing "_DEV_" will automatically trigger ECR login
+# - Use consistent naming patterns for easier management
