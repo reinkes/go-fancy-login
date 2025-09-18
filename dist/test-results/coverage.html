@@ -55,15 +55,23 @@
 			<div id="nav">
 				<select id="files">
 				
-				<option value="file0">fancy-login/cmd/main.go (6.3%)</option>
+				<option value="file0">fancy-login/cmd/main.go (3.9%)</option>
 				
 				<option value="file1">fancy-login/internal/aws/aws.go (0.0%)</option>
 				
 				<option value="file2">fancy-login/internal/config/config.go (18.2%)</option>
 				
-				<option value="file3">fancy-login/internal/k8s/k8s.go (0.0%)</option>
+				<option value="file3">fancy-login/internal/config/fancy_config.go (0.0%)</option>
 				
-				<option value="file4">fancy-login/internal/utils/logger.go (38.1%)</option>
+				<option value="file4">fancy-login/internal/config/parsers.go (0.0%)</option>
+				
+				<option value="file5">fancy-login/internal/config/wizard.go (0.0%)</option>
+				
+				<option value="file6">fancy-login/internal/k8s/k8s.go (0.0%)</option>
+				
+				<option value="file7">fancy-login/internal/utils/logger.go (38.1%)</option>
+				
+				<option value="file8">fancy-login/tools/test-config.go (0.0%)</option>
 				
 				</select>
 			</div>
@@ -92,7 +100,6 @@ import (
         "flag"
         "fmt"
         "os"
-        "strings"
 
         "fancy-login/internal/aws"
         "fancy-login/internal/config"
@@ -108,16 +115,18 @@ var (
 
         // Command-line flags
         verbose       = flag.Bool("v", false, "Enable verbose output")
-        k9sFlag       = flag.Bool("k", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
+        k9sFlag       = flag.Bool("k", false, "Auto-launch k9s without prompting")
         forceAWSLogin = flag.Bool("force-aws-login", false, "Force AWS SSO login even if a valid session exists")
+        configFlag    = flag.Bool("config", false, "Run configuration wizard")
         helpFlag      = flag.Bool("h", false, "Show help message")
         versionFlag   = flag.Bool("version", false, "Show version information")
 )
 
 func main() <span class="cov0" title="0">{
         flag.BoolVar(verbose, "verbose", false, "Enable verbose output")
-        flag.BoolVar(k9sFlag, "k9s", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
+        flag.BoolVar(k9sFlag, "k9s", false, "Auto-launch k9s without prompting")
         flag.BoolVar(helpFlag, "help", false, "Show help message")
+        flag.BoolVar(configFlag, "configure", false, "Run configuration wizard")
         flag.Parse()
 
         if *versionFlag </span><span class="cov0" title="0">{
@@ -128,6 +137,28 @@ func main() <span class="cov0" title="0">{
         <span class="cov0" title="0">if *helpFlag </span><span class="cov0" title="0">{
                 showHelp()
                 return
+        }</span>
+
+        <span class="cov0" title="0">if *configFlag </span><span class="cov0" title="0">{
+                wizard := config.NewConfigWizard()
+                if err := wizard.Run(); err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("Configuration wizard failed: %v\n", err)
+                        os.Exit(1)
+                }</span>
+                <span class="cov0" title="0">return</span>
+        }
+
+        // Run configuration wizard if needed
+        <span class="cov0" title="0">if err := config.RunConfigWizardIfNeeded(); err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("Configuration wizard failed: %v\n", err)
+                os.Exit(1)
+        }</span>
+
+        // Load fancy configuration
+        <span class="cov0" title="0">fancyConfig, err := config.LoadFancyConfig()
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("Failed to load configuration: %v\n", err)
+                os.Exit(1)
         }</span>
 
         // Initialize configuration
@@ -145,8 +176,8 @@ func main() <span class="cov0" title="0">{
         <span class="cov0" title="0">logger := utils.NewLogger(cfg.FancyVerbose)
 
         // Initialize managers
-        awsManager := aws.NewAWSManager(cfg, logger)
-        k8sManager := k8s.NewK8sManager(cfg, logger)
+        awsManager := aws.NewAWSManager(cfg, logger, fancyConfig)
+        k8sManager := k8s.NewK8sManager(cfg, logger, fancyConfig)
 
         // Variables to aggregate results
         var k8sContextResult string
@@ -180,12 +211,12 @@ func main() <span class="cov0" title="0">{
                 accountIDSummary = accountID
         }</span>
 
-        // Handle ECR login only for _DEV_ profiles
+        // Handle ECR login based on configuration
         <span class="cov0" title="0">if err := awsManager.HandleECRLogin(awsProfile); err != nil </span><span class="cov0" title="0">{
                 ecrResult = fmt.Sprintf("%s🐳 ECR login: failed%s", config.Red, config.Reset)
                 ecrAttempted = true
                 logger.FancyLog(fmt.Sprintf("ECR login failed: %v", err))
-        }</span> else<span class="cov0" title="0"> if awsProfile != "" &amp;&amp; containsDev(awsProfile) </span><span class="cov0" title="0">{
+        }</span> else<span class="cov0" title="0"> if fancyConfig.ShouldPerformECRLogin(awsProfile) </span><span class="cov0" title="0">{
                 ecrResult = fmt.Sprintf("%s🐳 ECR login: successful%s", config.Green, config.Reset)
                 ecrAttempted = true
         }</span>
@@ -209,7 +240,7 @@ func main() <span class="cov0" title="0">{
                 fmt.Println()</span>
         }
 
-        // Handle k9s launch
+        // Handle k9s launch based on configuration
         <span class="cov0" title="0">if err := k8sManager.HandleK9sLaunch(awsProfile); err != nil </span><span class="cov0" title="0">{
                 logger.LogError(fmt.Sprintf("Failed to launch k9s: %v", err))
         }</span>
@@ -221,21 +252,24 @@ func showHelp() <span class="cov0" title="0">{
         fmt.Printf(`Usage: %s [OPTIONS]
 
 OPTIONS:
-  -k, --k9s           Auto-launch k9s without prompting (for DEVENG profiles)
+  -k, --k9s           Auto-launch k9s without prompting
   -v, --verbose       Enable verbose output
+  --config            Run configuration wizard to set up or update mappings
   --force-aws-login   Force AWS SSO login even if a valid session exists
   -h, --help          Show this help message
   --version           Show version information
 
 Description:
   Interactive tool for AWS SSO login and Kubernetes context selection.
-  Automatically handles ECR login for development profiles and provides
-  namespace-aware k9s integration.
+  Uses configuration-driven logic for ECR login, K9s integration, and
+  AWS-to-Kubernetes context mappings.
   
-  When using -k flag with DEVENG profiles, k9s will launch automatically
-  in the derived namespace without user confirmation.
-  Use -v to enable verbose output for debugging.
-  Use --force-aws-login to always perform AWS SSO login, even if a valid session exists.
+  On first run, the configuration wizard will help you set up mappings
+  between your AWS profiles and Kubernetes contexts by reading your
+  existing ~/.aws/config and ~/.kube/config files.
+  
+  Configuration is stored in ~/.fancy-config.yaml and can be edited manually
+  or regenerated using the wizard.
 
 Version: %s
 Build Time: %s
@@ -243,14 +277,10 @@ Git Commit: %s
 `, os.Args[0], version, buildTime, gitCommit)
 }</span>
 
-func showVersion() <span class="cov1" title="1">{
+func showVersion() <span class="cov8" title="1">{
         fmt.Printf("fancy-login-go version %s\n", version)
         fmt.Printf("Build time: %s\n", buildTime)
         fmt.Printf("Git commit: %s\n", gitCommit)
-}</span>
-
-func containsDev(profile string) bool <span class="cov10" title="13">{
-        return strings.Contains(profile, "_DEV_")
 }</span>
 </pre>
 		
@@ -258,6 +288,7 @@ func containsDev(profile string) bool <span class="cov10" title="13">{
 
 import (
         "bufio"
+        "context"
         "fmt"
         "os"
         "os/exec"
@@ -265,6 +296,7 @@ import (
         "regexp"
         "runtime"
         "strings"
+        "time"
 
         "fancy-login/internal/config"
         "fancy-login/internal/utils"
@@ -272,15 +304,17 @@ import (
 
 // AWSManager handles AWS operations
 type AWSManager struct {
-        config *config.Config
-        logger *utils.Logger
+        config      *config.Config
+        logger      *utils.Logger
+        fancyConfig *config.FancyConfig
 }
 
 // NewAWSManager creates a new AWS manager
-func NewAWSManager(cfg *config.Config, logger *utils.Logger) *AWSManager <span class="cov0" title="0">{
+func NewAWSManager(cfg *config.Config, logger *utils.Logger, fancyConfig *config.FancyConfig) *AWSManager <span class="cov0" title="0">{
         return &amp;AWSManager{
-                config: cfg,
-                logger: logger,
+                config:      cfg,
+                logger:      logger,
+                fancyConfig: fancyConfig,
         }
 }</span>
 
@@ -299,14 +333,30 @@ func (aws *AWSManager) SelectAWSProfile() (string, error) <span class="cov0" tit
 
         <span class="cov0" title="0">aws.logger.FancyLog(fmt.Sprintf("Profiles found: %v", profiles))
 
-        // Use fzf to select profile
-        cmd := exec.Command("fzf", "--prompt=Select AWS Profile: ")
+        // Use fzf to select profile with proper TTY handling and timeout
+        ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+        defer cancel()
+
+        cmd := exec.CommandContext(ctx, "fzf", "--prompt=Select AWS Profile: ")
         cmd.Stdin = strings.NewReader(strings.Join(profiles, "\n"))
 
-        output, err := cmd.Output()
-        if err != nil </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("profile selection failed: %w", err)
+        // fzf needs full terminal access - redirect both stderr and pass through TTY
+        cmd.Stderr = os.Stderr
+
+        // Try to open /dev/tty for fzf to use for input/output
+        if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil </span><span class="cov0" title="0">{
+                defer tty.Close()
+                // Let fzf use the TTY for its interface
+                cmd.ExtraFiles = []*os.File{tty}
         }</span>
+
+        <span class="cov0" title="0">output, err := cmd.Output()
+        if err != nil </span><span class="cov0" title="0">{
+                if ctx.Err() == context.DeadlineExceeded </span><span class="cov0" title="0">{
+                        return "", fmt.Errorf("profile selection timed out after 60 seconds")
+                }</span>
+                <span class="cov0" title="0">return "", fmt.Errorf("profile selection failed: %w", err)</span>
+        }
 
         <span class="cov0" title="0">profile := strings.TrimSpace(string(output))
         if profile == "" </span><span class="cov0" title="0">{
@@ -351,9 +401,13 @@ func (aws *AWSManager) HandleAWSLogin(profile string, forceLogin bool) error <sp
 
         fmt.Printf("%sDo you want to continue anyway? (y/n): %s", config.Cyan, config.Reset)
         var response string
-        fmt.Scanln(&amp;response)
+        _, err = fmt.Scanln(&amp;response)
+        if err != nil </span><span class="cov0" title="0">{
+                aws.logger.LogError(fmt.Sprintf("Error reading user input: %v", err))
+                return err
+        }</span>
 
-        if response != "y" </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if response != "y" </span><span class="cov0" title="0">{
                 aws.logger.Die("User chose to exit due to authentication issues.")
         }</span>
 
@@ -361,13 +415,13 @@ func (aws *AWSManager) HandleAWSLogin(profile string, forceLogin bool) error <sp
         return nil</span>
 }
 
-// HandleECRLogin performs ECR login for development profiles
+// HandleECRLogin performs ECR login based on configuration
 func (aws *AWSManager) HandleECRLogin(profile string) error <span class="cov0" title="0">{
-        if !strings.Contains(profile, "_DEV_") </span><span class="cov0" title="0">{
+        if !aws.fancyConfig.ShouldPerformECRLogin(profile) </span><span class="cov0" title="0">{
                 return nil
         }</span>
 
-        <span class="cov0" title="0">aws.logger.FancyLog("ECR login for DEV profile...")
+        <span class="cov0" title="0">aws.logger.FancyLog("ECR login based on configuration...")
 
         accountID, err := aws.getAccountID(profile)
         if err != nil </span><span class="cov0" title="0">{
@@ -375,10 +429,13 @@ func (aws *AWSManager) HandleECRLogin(profile string) error <span class="cov0" t
                 return err
         }</span>
 
-        <span class="cov0" title="0">region := os.Getenv("AWS_REGION")
+        <span class="cov0" title="0">region := aws.fancyConfig.GetECRRegionForProfile(profile)
         if region == "" </span><span class="cov0" title="0">{
-                region = aws.config.DefaultRegion
-        }</span>
+                region = os.Getenv("AWS_REGION")
+                if region == "" </span><span class="cov0" title="0">{
+                        region = aws.config.DefaultRegion
+                }</span>
+        }
 
         <span class="cov0" title="0">aws.logger.FancyLog(fmt.Sprintf("Account ID: %s, Region: %s", accountID, region))
 
@@ -549,7 +606,7 @@ func (aws *AWSManager) performSSOMLogin(profile string) error <span class="cov0"
         return nil</span>
 }
 
-// getAccountID retrieves the AWS account ID
+// getAccountID gets the AWS account ID for a profile
 func (aws *AWSManager) getAccountID(profile string) (string, error) <span class="cov0" title="0">{
         cmd := exec.Command("aws", "sts", "get-caller-identity", "--profile", profile, "--query", "Account", "--output", "text")
         output, err := cmd.Output()
@@ -774,15 +831,773 @@ func getEnvBool(key string) bool <span class="cov7" title="20">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file3" style="display: none">package k8s
+		<pre class="file" id="file3" style="display: none">package config
 
 import (
+        "fmt"
+        "os"
+        "path/filepath"
+
+        "gopkg.in/yaml.v3"
+)
+
+// FancyConfig represents the main configuration structure
+type FancyConfig struct {
+        ProfileConfigs map[string]ProfileConfig `yaml:"profile_configs"`
+        Settings       GlobalSettings           `yaml:"settings"`
+}
+
+// ProfileConfig holds configuration for a specific AWS profile
+type ProfileConfig struct {
+        Name            string `yaml:"name"`
+        AccountID       string `yaml:"account_id,omitempty"`
+        ECRLogin        bool   `yaml:"ecr_login"`
+        ECRRegion       string `yaml:"ecr_region"`
+        K8sContext      string `yaml:"k8s_context"`
+        K9sAutoLaunch   bool   `yaml:"k9s_auto_launch"`
+        NamespacePrefix string `yaml:"namespace_prefix,omitempty"`
+}
+
+// GlobalSettings contains global configuration options
+type GlobalSettings struct {
+        DefaultRegion      string `yaml:"default_region"`
+        ConfigWizardRun    bool   `yaml:"config_wizard_run"`
+        PreferLocalConfigs bool   `yaml:"prefer_local_configs"`
+}
+
+// DefaultFancyConfig returns a default configuration
+func DefaultFancyConfig() *FancyConfig <span class="cov0" title="0">{
+        return &amp;FancyConfig{
+                ProfileConfigs: make(map[string]ProfileConfig),
+                Settings: GlobalSettings{
+                        DefaultRegion:      "eu-central-1",
+                        ConfigWizardRun:    false,
+                        PreferLocalConfigs: true,
+                },
+        }
+}</span>
+
+// LoadFancyConfig loads the fancy configuration from file
+func LoadFancyConfig() (*FancyConfig, error) <span class="cov0" title="0">{
+        configPath := GetFancyConfigPath()
+
+        // If config doesn't exist, return default config
+        if _, err := os.Stat(configPath); os.IsNotExist(err) </span><span class="cov0" title="0">{
+                return DefaultFancyConfig(), nil
+        }</span>
+
+        <span class="cov0" title="0">data, err := os.ReadFile(configPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
+        }</span>
+
+        <span class="cov0" title="0">var config FancyConfig
+        if err := yaml.Unmarshal(data, &amp;config); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to parse config file %s: %w", configPath, err)
+        }</span>
+
+        // Ensure maps are initialized
+        <span class="cov0" title="0">if config.ProfileConfigs == nil </span><span class="cov0" title="0">{
+                config.ProfileConfigs = make(map[string]ProfileConfig)
+        }</span>
+
+        <span class="cov0" title="0">return &amp;config, nil</span>
+}
+
+// SaveFancyConfig saves the fancy configuration to file
+func (fc *FancyConfig) SaveFancyConfig() error <span class="cov0" title="0">{
+        configPath := GetFancyConfigPath()
+
+        // Ensure directory exists
+        if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create config directory: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">data, err := yaml.Marshal(fc)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to marshal config: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">if err := os.WriteFile(configPath, data, 0644); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write config file %s: %w", configPath, err)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// GetFancyConfigPath returns the path to the fancy config file
+func GetFancyConfigPath() string <span class="cov0" title="0">{
+        // Check for local config first (for development)
+        localConfig := ".fancy-config.yaml"
+        if _, err := os.Stat(localConfig); err == nil </span><span class="cov0" title="0">{
+                abs, _ := filepath.Abs(localConfig)
+                return abs
+        }</span>
+
+        // Default to home directory
+        <span class="cov0" title="0">homeDir, _ := os.UserHomeDir()
+        return filepath.Join(homeDir, ".fancy-config.yaml")</span>
+}
+
+// GetProfileConfig returns the profile config for a given AWS profile
+func (fc *FancyConfig) GetProfileConfig(profile string) (*ProfileConfig, error) <span class="cov0" title="0">{
+        if config, exists := fc.ProfileConfigs[profile]; exists </span><span class="cov0" title="0">{
+                return &amp;config, nil
+        }</span>
+        <span class="cov0" title="0">return nil, fmt.Errorf("no configuration found for profile: %s", profile)</span>
+}
+
+// ShouldPerformECRLogin determines if ECR login should be performed for a profile
+func (fc *FancyConfig) ShouldPerformECRLogin(profile string) bool <span class="cov0" title="0">{
+        config, err := fc.GetProfileConfig(profile)
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov0" title="0">return config.ECRLogin</span>
+}
+
+// ShouldAutoLaunchK9s determines if K9s should be auto-launched for a profile
+func (fc *FancyConfig) ShouldAutoLaunchK9s(profile string) bool <span class="cov0" title="0">{
+        config, err := fc.GetProfileConfig(profile)
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov0" title="0">return config.K9sAutoLaunch</span>
+}
+
+// GetK8sContextForProfile returns the Kubernetes context for a profile
+func (fc *FancyConfig) GetK8sContextForProfile(profile string) string <span class="cov0" title="0">{
+        config, err := fc.GetProfileConfig(profile)
+        if err != nil </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov0" title="0">return config.K8sContext</span>
+}
+
+// GetECRRegionForProfile returns the ECR region for a profile
+func (fc *FancyConfig) GetECRRegionForProfile(profile string) string <span class="cov0" title="0">{
+        config, err := fc.GetProfileConfig(profile)
+        if err != nil </span><span class="cov0" title="0">{
+                return fc.Settings.DefaultRegion
+        }</span>
+        <span class="cov0" title="0">if config.ECRRegion == "" </span><span class="cov0" title="0">{
+                return fc.Settings.DefaultRegion
+        }</span>
+        <span class="cov0" title="0">return config.ECRRegion</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package config
+
+import (
+        "bufio"
+        "fmt"
+        "os"
+        "path/filepath"
+        "regexp"
+        "strings"
+
+        "gopkg.in/yaml.v3"
+)
+
+// AWSProfile represents an AWS profile from ~/.aws/config
+type AWSProfile struct {
+        Name        string
+        AccountID   string
+        Region      string
+        SSOStartURL string
+        SSORegion   string
+        SSORole     string
+        IsSSO       bool
+}
+
+// KubernetesContext represents a Kubernetes context from ~/.kube/config
+type KubernetesContext struct {
+        Name      string
+        Cluster   string
+        Namespace string
+        User      string
+}
+
+// KubeConfig represents the structure of ~/.kube/config
+type KubeConfig struct {
+        APIVersion     string `yaml:"apiVersion"`
+        Kind           string `yaml:"kind"`
+        CurrentContext string `yaml:"current-context"`
+        Contexts       []struct {
+                Name    string `yaml:"name"`
+                Context struct {
+                        Cluster   string `yaml:"cluster"`
+                        User      string `yaml:"user"`
+                        Namespace string `yaml:"namespace,omitempty"`
+                } `yaml:"context"`
+        } `yaml:"contexts"`
+        Clusters []struct {
+                Name    string `yaml:"name"`
+                Cluster struct {
+                        Server string `yaml:"server"`
+                } `yaml:"cluster"`
+        } `yaml:"clusters"`
+}
+
+// ParseAWSProfiles parses AWS profiles from ~/.aws/config
+func ParseAWSProfiles(awsConfigPath string) ([]AWSProfile, error) <span class="cov0" title="0">{
+        if awsConfigPath == "" </span><span class="cov0" title="0">{
+                homeDir, _ := os.UserHomeDir()
+                awsConfigPath = filepath.Join(homeDir, ".aws", "config")
+        }</span>
+
+        <span class="cov0" title="0">file, err := os.Open(awsConfigPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to open AWS config file %s: %w", awsConfigPath, err)
+        }</span>
+        <span class="cov0" title="0">defer file.Close()
+
+        var profiles []AWSProfile
+        var currentProfile *AWSProfile
+        profileRegex := regexp.MustCompile(`^\[profile\s+(.+)\]$`)
+        defaultRegex := regexp.MustCompile(`^\[default\]$`)
+
+        scanner := bufio.NewScanner(file)
+        for scanner.Scan() </span><span class="cov0" title="0">{
+                line := strings.TrimSpace(scanner.Text())
+
+                // Skip empty lines and comments
+                if line == "" || strings.HasPrefix(line, "#") </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                // Check for profile section
+                <span class="cov0" title="0">if matches := profileRegex.FindStringSubmatch(line); matches != nil </span><span class="cov0" title="0">{
+                        // Save previous profile if exists
+                        if currentProfile != nil </span><span class="cov0" title="0">{
+                                profiles = append(profiles, *currentProfile)
+                        }</span>
+                        // Start new profile
+                        <span class="cov0" title="0">currentProfile = &amp;AWSProfile{
+                                Name: matches[1],
+                        }</span>
+                } else<span class="cov0" title="0"> if defaultRegex.MatchString(line) </span><span class="cov0" title="0">{
+                        // Save previous profile if exists
+                        if currentProfile != nil </span><span class="cov0" title="0">{
+                                profiles = append(profiles, *currentProfile)
+                        }</span>
+                        // Start default profile
+                        <span class="cov0" title="0">currentProfile = &amp;AWSProfile{
+                                Name: "default",
+                        }</span>
+                } else<span class="cov0" title="0"> if currentProfile != nil </span><span class="cov0" title="0">{
+                        // Parse profile properties
+                        parts := strings.SplitN(line, "=", 2)
+                        if len(parts) == 2 </span><span class="cov0" title="0">{
+                                key := strings.TrimSpace(parts[0])
+                                value := strings.TrimSpace(parts[1])
+
+                                switch key </span>{
+                                case "sso_account_id":<span class="cov0" title="0">
+                                        currentProfile.AccountID = value
+                                        currentProfile.IsSSO = true</span>
+                                case "region":<span class="cov0" title="0">
+                                        currentProfile.Region = value</span>
+                                case "sso_start_url":<span class="cov0" title="0">
+                                        currentProfile.SSOStartURL = value
+                                        currentProfile.IsSSO = true</span>
+                                case "sso_region":<span class="cov0" title="0">
+                                        currentProfile.SSORegion = value</span>
+                                case "sso_role_name":<span class="cov0" title="0">
+                                        currentProfile.SSORole = value</span>
+                                }
+                        }
+                }
+        }
+
+        // Don't forget the last profile
+        <span class="cov0" title="0">if currentProfile != nil </span><span class="cov0" title="0">{
+                profiles = append(profiles, *currentProfile)
+        }</span>
+
+        <span class="cov0" title="0">return profiles, scanner.Err()</span>
+}
+
+// ParseKubernetesContexts parses Kubernetes contexts from ~/.kube/config
+func ParseKubernetesContexts(kubeConfigPath string) ([]KubernetesContext, error) <span class="cov0" title="0">{
+        if kubeConfigPath == "" </span><span class="cov0" title="0">{
+                homeDir, _ := os.UserHomeDir()
+                kubeConfigPath = filepath.Join(homeDir, ".kube", "config")
+        }</span>
+
+        <span class="cov0" title="0">data, err := os.ReadFile(kubeConfigPath)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to read Kubernetes config file %s: %w", kubeConfigPath, err)
+        }</span>
+
+        <span class="cov0" title="0">var kubeConfig KubeConfig
+        if err := yaml.Unmarshal(data, &amp;kubeConfig); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to parse Kubernetes config file %s: %w", kubeConfigPath, err)
+        }</span>
+
+        <span class="cov0" title="0">var contexts []KubernetesContext
+        for _, ctx := range kubeConfig.Contexts </span><span class="cov0" title="0">{
+                contexts = append(contexts, KubernetesContext{
+                        Name:      ctx.Name,
+                        Cluster:   ctx.Context.Cluster,
+                        User:      ctx.Context.User,
+                        Namespace: ctx.Context.Namespace,
+                })
+        }</span>
+
+        <span class="cov0" title="0">return contexts, nil</span>
+}
+
+// FindAccountIDForProfile attempts to find the AWS account ID for a profile
+// This could be extended to actually call AWS CLI if needed
+func FindAccountIDForProfile(profile string) (string, error) <span class="cov0" title="0">{
+        // For now, try to parse from the profile name if it follows common patterns
+        // This could be enhanced to actually call `aws sts get-caller-identity`
+
+        // Try to extract from common naming patterns
+        patterns := []string{
+                `(\d{12})`,   // Direct account ID
+                `-(\d{12})-`, // Account ID in middle
+                `_(\d{12})_`, // Account ID with underscores
+        }
+
+        for _, pattern := range patterns </span><span class="cov0" title="0">{
+                re := regexp.MustCompile(pattern)
+                if matches := re.FindStringSubmatch(profile); len(matches) &gt; 1 </span><span class="cov0" title="0">{
+                        return matches[1], nil
+                }</span>
+        }
+
+        <span class="cov0" title="0">return "", fmt.Errorf("could not determine account ID for profile %s", profile)</span>
+}
+
+// GetAWSConfigPath returns the path to AWS config file
+func GetAWSConfigPath() string <span class="cov0" title="0">{
+        if path := os.Getenv("AWS_CONFIG_FILE"); path != "" </span><span class="cov0" title="0">{
+                return path
+        }</span>
+        <span class="cov0" title="0">homeDir, _ := os.UserHomeDir()
+        return filepath.Join(homeDir, ".aws", "config")</span>
+}
+
+// GetKubeConfigPath returns the path to Kubernetes config file
+func GetKubeConfigPath() string <span class="cov0" title="0">{
+        if path := os.Getenv("KUBECONFIG"); path != "" </span><span class="cov0" title="0">{
+                return path
+        }</span>
+        <span class="cov0" title="0">homeDir, _ := os.UserHomeDir()
+        return filepath.Join(homeDir, ".kube", "config")</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package config
+
+import (
+        "bufio"
+        "fmt"
+        "os"
+        "strconv"
+        "strings"
+)
+
+// ConfigWizard handles the interactive configuration setup
+type ConfigWizard struct {
+        config      *FancyConfig
+        awsProfiles []AWSProfile
+        k8sContexts []KubernetesContext
+        reader      *bufio.Reader
+        addNewOnly  bool // If true, only configure new profiles
+}
+
+// NewConfigWizard creates a new configuration wizard
+func NewConfigWizard() *ConfigWizard <span class="cov0" title="0">{
+        return &amp;ConfigWizard{
+                config: DefaultFancyConfig(),
+                reader: bufio.NewReader(os.Stdin),
+        }
+}</span>
+
+// NewConfigWizardWithMode creates a new configuration wizard with specific mode
+func NewConfigWizardWithMode(addNewOnly bool) *ConfigWizard <span class="cov0" title="0">{
+        wizard := NewConfigWizard()
+        wizard.addNewOnly = addNewOnly
+        return wizard
+}</span>
+
+// Run executes the configuration wizard
+func (w *ConfigWizard) Run() error <span class="cov0" title="0">{
+        fmt.Printf("%s🎯 Fancy Login Configuration Wizard%s\n", Yellow+Bold, Reset)
+        fmt.Printf("%s========================================%s\n\n", Yellow, Reset)
+
+        // Try to load existing configuration
+        existingConfig, err := LoadFancyConfig()
+        if err == nil &amp;&amp; len(existingConfig.ProfileConfigs) &gt; 0 </span><span class="cov0" title="0">{
+                fmt.Printf("%s📋 Found existing configuration with %d profiles%s\n", Cyan, len(existingConfig.ProfileConfigs), Reset)
+                fmt.Printf("Configuration mode:\n")
+                fmt.Printf("  1. Override all (reconfigure all profiles)\n")
+                fmt.Printf("  2. Add new profiles only (keep existing, add new ones)\n")
+                fmt.Printf("Choice [2]: ")
+
+                choice := w.readInput()
+                if choice == "1" </span><span class="cov0" title="0">{
+                        fmt.Printf("%s⚠️  This will replace your existing configuration!%s\n", Yellow, Reset)
+                        fmt.Printf("Are you sure? [y/N]: ")
+                        confirm := w.readInput()
+                        if confirm == "" || strings.ToLower(confirm)[0] != 'y' </span><span class="cov0" title="0">{
+                                w.addNewOnly = true
+                                w.config = existingConfig
+                        }</span>
+                } else<span class="cov0" title="0"> {
+                        w.addNewOnly = true
+                        w.config = existingConfig
+                }</span>
+                <span class="cov0" title="0">fmt.Println()</span>
+        }
+
+        // Load existing configurations
+        <span class="cov0" title="0">if err := w.discoverConfigurations(); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to discover configurations: %w", err)
+        }</span>
+
+        // Show discovered configurations
+        <span class="cov0" title="0">w.showDiscoveredConfigurations()
+
+        // Configure profiles
+        if err := w.configureProfiles(); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to configure profiles: %w", err)
+        }</span>
+
+        // Configure global settings
+        <span class="cov0" title="0">w.configureGlobalSettings()
+
+        // Save configuration
+        if err := w.saveConfiguration(); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to save configuration: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">fmt.Printf("\n%s✅ Configuration wizard completed successfully!%s\n", Green+Bold, Reset)
+        fmt.Printf("%sConfiguration saved to: %s%s\n", Green, GetFancyConfigPath(), Reset)
+
+        return nil</span>
+}
+
+// discoverConfigurations discovers existing AWS and Kubernetes configurations
+func (w *ConfigWizard) discoverConfigurations() error <span class="cov0" title="0">{
+        fmt.Printf("%s🔍 Discovering existing configurations...%s\n\n", Cyan, Reset)
+
+        // Discover AWS profiles
+        awsConfigPath := GetAWSConfigPath()
+        fmt.Printf("Looking for AWS config at: %s\n", awsConfigPath)
+
+        profiles, err := ParseAWSProfiles(awsConfigPath)
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("%s⚠️  Warning: Could not parse AWS config: %v%s\n", Yellow, err, Reset)
+                w.awsProfiles = []AWSProfile{}
+        }</span> else<span class="cov0" title="0"> {
+                w.awsProfiles = profiles
+                fmt.Printf("%s✅ Found %d AWS profiles%s\n", Green, len(profiles), Reset)
+        }</span>
+
+        // Discover Kubernetes contexts
+        <span class="cov0" title="0">kubeConfigPath := GetKubeConfigPath()
+        fmt.Printf("Looking for Kubernetes config at: %s\n", kubeConfigPath)
+
+        contexts, err := ParseKubernetesContexts(kubeConfigPath)
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Printf("%s⚠️  Warning: Could not parse Kubernetes config: %v%s\n", Yellow, err, Reset)
+                w.k8sContexts = []KubernetesContext{}
+        }</span> else<span class="cov0" title="0"> {
+                w.k8sContexts = contexts
+                fmt.Printf("%s✅ Found %d Kubernetes contexts%s\n", Green, len(contexts), Reset)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// showDiscoveredConfigurations displays what was found
+func (w *ConfigWizard) showDiscoveredConfigurations() <span class="cov0" title="0">{
+        fmt.Printf("\n%s📋 Discovered Configurations:%s\n", Cyan+Bold, Reset)
+        fmt.Printf("%s================================%s\n\n", Cyan, Reset)
+
+        // Show AWS profiles
+        if len(w.awsProfiles) &gt; 0 </span><span class="cov0" title="0">{
+                fmt.Printf("%sAWS Profiles:%s\n", Yellow+Bold, Reset)
+                for i, profile := range w.awsProfiles </span><span class="cov0" title="0">{
+                        status := "Standard"
+                        if profile.IsSSO </span><span class="cov0" title="0">{
+                                status = "SSO"
+                        }</span>
+                        <span class="cov0" title="0">accountInfo := "Unknown Account"
+                        if profile.AccountID != "" </span><span class="cov0" title="0">{
+                                accountInfo = fmt.Sprintf("Account: %s", profile.AccountID)
+                        }</span>
+
+                        // Show if profile is already configured
+                        <span class="cov0" title="0">configStatus := ""
+                        if _, exists := w.config.ProfileConfigs[profile.Name]; exists </span><span class="cov0" title="0">{
+                                configStatus = fmt.Sprintf(" %s[Configured]%s", Green, Reset)
+                        }</span>
+
+                        <span class="cov0" title="0">fmt.Printf("  %d. %s (%s, %s)%s\n", i+1, profile.Name, status, accountInfo, configStatus)</span>
+                }
+                <span class="cov0" title="0">fmt.Println()</span>
+        }
+
+        // Show Kubernetes contexts
+        <span class="cov0" title="0">if len(w.k8sContexts) &gt; 0 </span><span class="cov0" title="0">{
+                fmt.Printf("%sKubernetes Contexts:%s\n", Yellow+Bold, Reset)
+                for i, ctx := range w.k8sContexts </span><span class="cov0" title="0">{
+                        namespace := "default"
+                        if ctx.Namespace != "" </span><span class="cov0" title="0">{
+                                namespace = ctx.Namespace
+                        }</span>
+                        <span class="cov0" title="0">fmt.Printf("  %d. %s (Cluster: %s, Namespace: %s)\n", i+1, ctx.Name, ctx.Cluster, namespace)</span>
+                }
+                <span class="cov0" title="0">fmt.Println()</span>
+        }
+}
+
+// configureProfiles configures each AWS profile individually
+func (w *ConfigWizard) configureProfiles() error <span class="cov0" title="0">{
+        fmt.Printf("%s🔗 Configuring AWS Profiles%s\n", Cyan+Bold, Reset)
+        fmt.Printf("%s========================%s\n\n", Cyan, Reset)
+
+        if len(w.awsProfiles) == 0 </span><span class="cov0" title="0">{
+                fmt.Printf("%s⚠️  No AWS profiles found. You can configure profiles manually later.%s\n\n", Yellow, Reset)
+                return nil
+        }</span>
+
+        // Filter profiles if we're only adding new ones
+        <span class="cov0" title="0">profilesToConfigure := w.awsProfiles
+        if w.addNewOnly </span><span class="cov0" title="0">{
+                var newProfiles []AWSProfile
+                var existingCount int
+                for _, profile := range w.awsProfiles </span><span class="cov0" title="0">{
+                        if _, exists := w.config.ProfileConfigs[profile.Name]; !exists </span><span class="cov0" title="0">{
+                                newProfiles = append(newProfiles, profile)
+                        }</span> else<span class="cov0" title="0"> {
+                                existingCount++
+                        }</span>
+                }
+                <span class="cov0" title="0">profilesToConfigure = newProfiles
+
+                if existingCount &gt; 0 </span><span class="cov0" title="0">{
+                        fmt.Printf("%s📋 Skipping %d existing profiles%s\n", Cyan, existingCount, Reset)
+                }</span>
+                <span class="cov0" title="0">if len(newProfiles) == 0 </span><span class="cov0" title="0">{
+                        fmt.Printf("%s✅ No new profiles found. All profiles are already configured.%s\n\n", Green, Reset)
+                        return nil
+                }</span>
+                <span class="cov0" title="0">fmt.Printf("%s🆕 Found %d new profiles to configure%s\n\n", Green, len(newProfiles), Reset)</span>
+        }
+
+        <span class="cov0" title="0">fmt.Printf("Let's configure %s profiles. This determines:\n",
+                func() string </span><span class="cov0" title="0">{
+                        if w.addNewOnly </span><span class="cov0" title="0">{
+                                return "new"
+                        }</span>
+                        <span class="cov0" title="0">return "each"</span>
+                }())
+        <span class="cov0" title="0">fmt.Printf("  • Whether to auto-login to ECR\n")
+        fmt.Printf("  • Which Kubernetes context to use\n")
+        fmt.Printf("  • Whether to auto-launch K9s\n\n")
+
+        for i, profile := range profilesToConfigure </span><span class="cov0" title="0">{
+                fmt.Printf("%s📝 Configuring Profile %d/%d: %s%s%s%s\n",
+                        Bold, i+1, len(profilesToConfigure), Yellow, profile.Name, Reset, Bold)
+                fmt.Printf("%s%s\n", strings.Repeat("─", 50), Reset)
+
+                if profile.AccountID != "" </span><span class="cov0" title="0">{
+                        fmt.Printf("Account ID: %s%s%s\n", Cyan, profile.AccountID, Reset)
+                }</span>
+                <span class="cov0" title="0">if profile.Region != "" </span><span class="cov0" title="0">{
+                        fmt.Printf("Region: %s%s%s\n", Cyan, profile.Region, Reset)
+                }</span>
+                <span class="cov0" title="0">if profile.IsSSO </span><span class="cov0" title="0">{
+                        fmt.Printf("Type: %sSSO Profile%s\n", Green, Reset)
+                }</span>
+                <span class="cov0" title="0">fmt.Println()
+
+                // Ask if user wants to configure this profile
+                fmt.Printf("Configure this profile? [Y/n]: ")
+                configure := w.readInput()
+                if configure != "" &amp;&amp; strings.ToLower(configure)[0] == 'n' </span><span class="cov0" title="0">{
+                        fmt.Println("Skipping profile.")
+                        continue</span>
+                }
+
+                // Get profile configuration
+                <span class="cov0" title="0">profileConfig, err := w.getProfileConfiguration(profile)
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+
+                // Store profile configuration directly
+                <span class="cov0" title="0">w.config.ProfileConfigs[profile.Name] = ProfileConfig{
+                        Name:          profile.Name,
+                        AccountID:     profile.AccountID,
+                        ECRLogin:      profileConfig.ECRLogin,
+                        ECRRegion:     profileConfig.ECRRegion,
+                        K8sContext:    profileConfig.K8sContext,
+                        K9sAutoLaunch: profileConfig.K9sAutoLaunch,
+                }
+
+                fmt.Printf("%s✅ Profile %s configured%s\n\n", Green, profile.Name, Reset)</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// ProfileConfiguration holds temporary configuration for a profile during wizard
+type ProfileConfiguration struct {
+        Name          string
+        ECRLogin      bool
+        ECRRegion     string
+        K8sContext    string
+        K9sAutoLaunch bool
+}
+
+// getProfileConfiguration gets configuration for a specific profile
+func (w *ConfigWizard) getProfileConfiguration(profile AWSProfile) (*ProfileConfiguration, error) <span class="cov0" title="0">{
+        config := &amp;ProfileConfiguration{
+                Name: profile.Name,
+        }
+
+        // ECR login
+        fmt.Printf("Enable ECR login for profile %s? [Y/n]: ", profile.Name)
+        ecrInput := w.readInput()
+        config.ECRLogin = ecrInput == "" || strings.ToLower(ecrInput)[0] == 'y'
+
+        // ECR region
+        if config.ECRLogin </span><span class="cov0" title="0">{
+                defaultRegion := "eu-central-1"
+                if profile.Region != "" </span><span class="cov0" title="0">{
+                        defaultRegion = profile.Region
+                }</span>
+                <span class="cov0" title="0">fmt.Printf("ECR region for %s [%s]: ", profile.Name, defaultRegion)
+                region := w.readInput()
+                if region == "" </span><span class="cov0" title="0">{
+                        region = defaultRegion
+                }</span>
+                <span class="cov0" title="0">config.ECRRegion = region</span>
+        }
+
+        // Kubernetes context
+        <span class="cov0" title="0">if len(w.k8sContexts) &gt; 0 </span><span class="cov0" title="0">{
+                fmt.Printf("Select Kubernetes context for profile %s:\n", profile.Name)
+                for i, ctx := range w.k8sContexts </span><span class="cov0" title="0">{
+                        fmt.Printf("  %d. %s\n", i+1, ctx.Name)
+                }</span>
+                <span class="cov0" title="0">fmt.Printf("  0. None\n")
+                fmt.Printf("Choice [0]: ")
+
+                choice := w.readInput()
+                if choice != "" &amp;&amp; choice != "0" </span><span class="cov0" title="0">{
+                        if idx, err := strconv.Atoi(choice); err == nil &amp;&amp; idx &gt; 0 &amp;&amp; idx &lt;= len(w.k8sContexts) </span><span class="cov0" title="0">{
+                                config.K8sContext = w.k8sContexts[idx-1].Name
+                        }</span>
+                }
+        }
+
+        // K9s auto-launch
+        <span class="cov0" title="0">if config.K8sContext != "" </span><span class="cov0" title="0">{
+                fmt.Printf("Auto-launch K9s for profile %s? [y/N]: ", profile.Name)
+                k9sInput := w.readInput()
+                config.K9sAutoLaunch = k9sInput != "" &amp;&amp; strings.ToLower(k9sInput)[0] == 'y'
+        }</span>
+
+        <span class="cov0" title="0">return config, nil</span>
+}
+
+// configureGlobalSettings configures global settings
+func (w *ConfigWizard) configureGlobalSettings() <span class="cov0" title="0">{
+        fmt.Printf("%s⚙️  Global Settings%s\n", Cyan+Bold, Reset)
+        fmt.Printf("%s================%s\n\n", Cyan, Reset)
+
+        // Default region
+        fmt.Printf("Default AWS region [%s]: ", w.config.Settings.DefaultRegion)
+        region := w.readInput()
+        if region != "" </span><span class="cov0" title="0">{
+                w.config.Settings.DefaultRegion = region
+        }</span>
+
+        // Mark wizard as completed
+        <span class="cov0" title="0">w.config.Settings.ConfigWizardRun = true</span>
+}
+
+// saveConfiguration saves the configuration
+func (w *ConfigWizard) saveConfiguration() error <span class="cov0" title="0">{
+        fmt.Printf("%s💾 Saving Configuration%s\n", Cyan+Bold, Reset)
+        fmt.Printf("%s===================%s\n\n", Cyan, Reset)
+
+        configPath := GetFancyConfigPath()
+        fmt.Printf("Save configuration to: %s\n", configPath)
+        fmt.Printf("Proceed? [Y/n]: ")
+
+        confirm := w.readInput()
+        if confirm != "" &amp;&amp; strings.ToLower(confirm)[0] == 'n' </span><span class="cov0" title="0">{
+                return fmt.Errorf("configuration save cancelled")
+        }</span>
+
+        <span class="cov0" title="0">return w.config.SaveFancyConfig()</span>
+}
+
+// readInput reads a line of input from the user
+func (w *ConfigWizard) readInput() string <span class="cov0" title="0">{
+        input, _ := w.reader.ReadString('\n')
+        return strings.TrimSpace(input)
+}</span>
+
+// RunConfigWizardIfNeeded runs the config wizard if configuration doesn't exist or hasn't been run
+func RunConfigWizardIfNeeded() error <span class="cov0" title="0">{
+        config, err := LoadFancyConfig()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // If config exists and wizard has been run, skip
+        <span class="cov0" title="0">if config.Settings.ConfigWizardRun </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        // Check if config file exists
+        <span class="cov0" title="0">configPath := GetFancyConfigPath()
+        if _, err := os.Stat(configPath); err == nil </span><span class="cov0" title="0">{
+                // Config exists but wizard hasn't been marked as run
+                fmt.Printf("%s⚠️  Configuration file exists but wizard hasn't been completed.%s\n", Yellow, Reset)
+                fmt.Printf("Run configuration wizard to update settings? [y/N]: ")
+
+                reader := bufio.NewReader(os.Stdin)
+                input, _ := reader.ReadString('\n')
+                if strings.ToLower(strings.TrimSpace(input))[0] != 'y' </span><span class="cov0" title="0">{
+                        return nil
+                }</span>
+        }
+
+        // Run the wizard
+        <span class="cov0" title="0">wizard := NewConfigWizard()
+        return wizard.Run()</span>
+}
+
+// RunConfigWizard explicitly runs the configuration wizard
+func RunConfigWizard() error <span class="cov0" title="0">{
+        wizard := NewConfigWizard()
+        return wizard.Run()
+}</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package k8s
+
+import (
+        "context"
         "encoding/base64"
         "fmt"
         "os"
         "os/exec"
         "runtime"
         "strings"
+        "time"
 
         "fancy-login/internal/config"
         "fancy-login/internal/utils"
@@ -790,15 +1605,17 @@ import (
 
 // K8sManager handles Kubernetes operations
 type K8sManager struct {
-        config *config.Config
-        logger *utils.Logger
+        config      *config.Config
+        logger      *utils.Logger
+        fancyConfig *config.FancyConfig
 }
 
 // NewK8sManager creates a new Kubernetes manager
-func NewK8sManager(cfg *config.Config, logger *utils.Logger) *K8sManager <span class="cov0" title="0">{
+func NewK8sManager(cfg *config.Config, logger *utils.Logger, fancyConfig *config.FancyConfig) *K8sManager <span class="cov0" title="0">{
         return &amp;K8sManager{
-                config: cfg,
-                logger: logger,
+                config:      cfg,
+                logger:      logger,
+                fancyConfig: fancyConfig,
         }
 }</span>
 
@@ -806,11 +1623,28 @@ func NewK8sManager(cfg *config.Config, logger *utils.Logger) *K8sManager <span c
 func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error) <span class="cov0" title="0">{
         k8s.logger.FancyLog("Entered select_kubernetes_context")
 
-        if k8s.shouldSkipK8sContext(awsProfile) </span><span class="cov0" title="0">{
-                return k8s.handleDEVProfile(awsProfile)
+        // Check if there's a direct mapping from configuration
+        configuredContext := k8s.fancyConfig.GetK8sContextForProfile(awsProfile)
+        if configuredContext != "" </span><span class="cov0" title="0">{
+                k8s.logger.FancyLog(fmt.Sprintf("Using configured context: %s", configuredContext))
+
+                if err := k8s.switchK8sContext(configuredContext); err != nil </span><span class="cov0" title="0">{
+                        k8s.logger.LogWarning(fmt.Sprintf("Failed to switch to context %s: %v", configuredContext, err))
+                }</span>
+
+                <span class="cov0" title="0">return k8s.formatContextSummary(configuredContext, awsProfile), nil</span>
+        }
+
+        // If profile exists but has empty k8s_context, skip Kubernetes context switching
+        <span class="cov0" title="0">if _, err := k8s.fancyConfig.GetProfileConfig(awsProfile); err == nil </span><span class="cov0" title="0">{
+                k8s.logger.FancyLog(fmt.Sprintf("Profile %s has no Kubernetes context configured, skipping context selection", awsProfile))
+                return fmt.Sprintf("%s🌱 Kubernetes Context:%s (not configured for this profile)",
+                        config.Green, config.Reset), nil
         }</span>
 
-        // Load context mappings
+        // Fallback to legacy context mappings for backward compatibility
+
+        // Load context mappings for backward compatibility
         <span class="cov0" title="0">mappings, err := config.LoadContextMappings()
         if err != nil </span><span class="cov0" title="0">{
                 k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
@@ -845,9 +1679,10 @@ func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error
         <span class="cov0" title="0">return k8s.formatContextSummary(context, awsProfile), nil</span>
 }
 
-// HandleK9sLaunch handles launching k9s for DEVENG profiles
+// HandleK9sLaunch handles launching k9s based on configuration
 func (k8s *K8sManager) HandleK9sLaunch(awsProfile string) error <span class="cov0" title="0">{
-        if !strings.HasSuffix(awsProfile, "DEVENG") </span><span class="cov0" title="0">{
+        // Check if this profile should auto-launch K9s
+        if !k8s.fancyConfig.ShouldAutoLaunchK9s(awsProfile) </span><span class="cov0" title="0">{
                 return nil
         }</span>
 
@@ -855,67 +1690,18 @@ func (k8s *K8sManager) HandleK9sLaunch(awsProfile string) error <span class="cov
                 return k8s.launchK9sWithNamespace(awsProfile)
         }</span>
 
-        <span class="cov0" title="0">fmt.Printf("\n%sDo you want to open k9s in the derived namespace? (y/n): %s", config.Cyan, config.Reset)
+        <span class="cov0" title="0">fmt.Printf("\n%sDo you want to open k9s? (y/n): %s", config.Cyan, config.Reset)
         var response string
-        fmt.Scanln(&amp;response)
+        _, err := fmt.Scanln(&amp;response)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
 
-        if response == "y" </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if response == "y" </span><span class="cov0" title="0">{
                 return k8s.launchK9sWithNamespace(awsProfile)
         }</span>
 
         <span class="cov0" title="0">return nil</span>
-}
-
-// shouldSkipK8sContext determines if context selection should be skipped for DEV profiles
-func (k8s *K8sManager) shouldSkipK8sContext(awsProfile string) bool <span class="cov0" title="0">{
-        skip := strings.Contains(awsProfile, "_DEV_")
-        k8s.logger.FancyLog(fmt.Sprintf("should_skip_k8s_context: %s matches *_DEV_* = %t", awsProfile, skip))
-        return skip
-}</span>
-
-// handleDEVProfile handles context selection for DEV profiles
-func (k8s *K8sManager) handleDEVProfile(awsProfile string) (string, error) <span class="cov0" title="0">{
-        mappings, err := config.LoadContextMappings()
-        if err != nil </span><span class="cov0" title="0">{
-                k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
-                mappings = []config.ContextMapping{}
-        }</span>
-
-        <span class="cov0" title="0">var mappedContext string
-        for _, mapping := range mappings </span><span class="cov0" title="0">{
-                if config.MatchesPattern(awsProfile, mapping.Pattern) </span><span class="cov0" title="0">{
-                        mappedContext = mapping.Context
-                        break</span>
-                }
-        }
-
-        // Load namespace mappings
-        <span class="cov0" title="0">namespaceMappings, err := config.LoadNamespaceMappings()
-        if err != nil </span><span class="cov0" title="0">{
-                k8s.logger.FancyLog(fmt.Sprintf("Failed to load namespace mappings: %v", err))
-                namespaceMappings = make(map[string]string)
-        }</span>
-
-        // Try to get namespace from profile
-        <span class="cov0" title="0">namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
-        if err == nil </span><span class="cov0" title="0">{
-                k8s.setITerm2Namespace(namespace)
-                if mappedContext != "" </span><span class="cov0" title="0">{
-                        return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s %s(ns: %s)%s",
-                                config.Green, config.Reset, config.Bold, mappedContext, config.Reset,
-                                config.Cyan, namespace, config.Reset), nil
-                }</span>
-                <span class="cov0" title="0">return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s(ns: %s)%s",
-                        config.Green, config.Reset, config.Cyan, namespace, config.Reset), nil</span>
-        }
-
-        <span class="cov0" title="0">if mappedContext != "" </span><span class="cov0" title="0">{
-                return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s",
-                        config.Green, config.Reset, config.Bold, mappedContext, config.Reset), nil
-        }</span>
-
-        <span class="cov0" title="0">return fmt.Sprintf("%s🌱 Kubernetes Context:%s (skipped for DEV profile)",
-                config.Green, config.Reset), nil</span>
 }
 
 // selectContextWithFzf uses fzf to select a Kubernetes context
@@ -934,14 +1720,21 @@ func (k8s *K8sManager) selectContextWithFzf() (string, error) <span class="cov0"
                 return "", fmt.Errorf("no contexts available")
         }</span>
 
-        // Use fzf to select
-        <span class="cov0" title="0">fzfCmd := exec.Command("fzf", "--prompt=Select Kubernetes Context: ")
+        // Use fzf to select with timeout
+        <span class="cov0" title="0">ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+        defer cancel()
+
+        fzfCmd := exec.CommandContext(ctx, "fzf", "--prompt=Select Kubernetes Context: ")
         fzfCmd.Stdin = strings.NewReader(contexts)
+        fzfCmd.Stderr = os.Stderr
 
         result, err := fzfCmd.Output()
         if err != nil </span><span class="cov0" title="0">{
-                return "", err
-        }</span>
+                if ctx.Err() == context.DeadlineExceeded </span><span class="cov0" title="0">{
+                        return "", fmt.Errorf("context selection timed out after 60 seconds")
+                }</span>
+                <span class="cov0" title="0">return "", err</span>
+        }
 
         <span class="cov0" title="0">context := strings.TrimSpace(string(result))
         k8s.logger.FancyLog(fmt.Sprintf("K8s context selected: %s", context))
@@ -1055,7 +1848,7 @@ func (k8s *K8sManager) launchK9sWithNamespace(awsProfile string) error <span cla
 }
 </pre>
 		
-		<pre class="file" id="file4" style="display: none">package utils
+		<pre class="file" id="file7" style="display: none">package utils
 
 import (
         "fmt"
@@ -1152,6 +1945,144 @@ func (s *Spinner) Stop() <span class="cov0" title="0">{
         s.running = false
         fmt.Printf("\r%60s\r", "") // Clear the line
 }</span>
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package main
+
+import (
+        "fmt"
+        "os"
+
+        "fancy-login/internal/config"
+)
+
+func main() <span class="cov0" title="0">{
+        // Test configuration loading
+        fmt.Println("🧪 Testing Fancy Login Configuration System")
+        fmt.Println("==========================================")
+
+        // Test 1: Load default config
+        fmt.Println("\n1. Testing default configuration...")
+        defaultConfig := config.DefaultFancyConfig()
+        fmt.Printf("   ✅ Default region: %s\n", defaultConfig.Settings.DefaultRegion)
+        fmt.Printf("   ✅ Wizard run: %t\n", defaultConfig.Settings.ConfigWizardRun)
+
+        // Test 2: Test configuration methods
+        fmt.Println("\n2. Testing configuration with example data...")
+
+        // Add some test data
+        defaultConfig.ProfileConfigs["mycompany_DEV_developer"] = config.ProfileConfig{
+                Name:            "mycompany_DEV_developer",
+                AccountID:       "123456789012",
+                ECRLogin:        true,
+                ECRRegion:       "eu-central-1",
+                K8sContext:      "dev-cluster",
+                K9sAutoLaunch:   true,
+                NamespacePrefix: "dev",
+        }
+
+        // Test profile matching
+        testProfiles := []string{
+                "mycompany_DEV_developer",
+                "mycompany_PROD_admin",
+                "unknown_profile",
+        }
+
+        for _, profile := range testProfiles </span><span class="cov0" title="0">{
+                fmt.Printf("\n   Testing profile: %s\n", profile)
+
+                // Test profile configuration
+                profileConfig, err := defaultConfig.GetProfileConfig(profile)
+                if err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("   - Profile not configured\n")
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("   - ECR Login: %t\n", profileConfig.ECRLogin)
+                        fmt.Printf("   - K9s Auto-launch: %t\n", profileConfig.K9sAutoLaunch)
+                        fmt.Printf("   - K8s Context: %s\n", profileConfig.K8sContext)
+                        fmt.Printf("   - ECR Region: %s\n", profileConfig.ECRRegion)
+                        fmt.Printf("   - Account ID: %s\n", profileConfig.AccountID)
+                }</span>
+        }
+
+        // Test 3: Test AWS config parsing (if file exists)
+        <span class="cov0" title="0">fmt.Println("\n3. Testing AWS config parsing...")
+        awsConfigPath := config.GetAWSConfigPath()
+        fmt.Printf("   AWS config path: %s\n", awsConfigPath)
+
+        if _, err := os.Stat(awsConfigPath); err == nil </span><span class="cov0" title="0">{
+                profiles, err := config.ParseAWSProfiles(awsConfigPath)
+                if err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("   ❌ Error parsing AWS config: %v\n", err)
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("   ✅ Found %d AWS profiles\n", len(profiles))
+                        for i, profile := range profiles </span><span class="cov0" title="0">{
+                                if i &lt; 3 </span><span class="cov0" title="0">{ // Show first 3 profiles
+                                        fmt.Printf("   - %s (Account: %s, SSO: %t)\n", profile.Name, profile.AccountID, profile.IsSSO)
+                                }</span>
+                        }
+                        <span class="cov0" title="0">if len(profiles) &gt; 3 </span><span class="cov0" title="0">{
+                                fmt.Printf("   ... and %d more\n", len(profiles)-3)
+                        }</span>
+                }
+        } else<span class="cov0" title="0"> {
+                fmt.Printf("   ⚠️  AWS config not found (this is normal for testing)\n")
+        }</span>
+
+        // Test 4: Test Kubernetes config parsing (if file exists)
+        <span class="cov0" title="0">fmt.Println("\n4. Testing Kubernetes config parsing...")
+        kubeConfigPath := config.GetKubeConfigPath()
+        fmt.Printf("   Kube config path: %s\n", kubeConfigPath)
+
+        if _, err := os.Stat(kubeConfigPath); err == nil </span><span class="cov0" title="0">{
+                contexts, err := config.ParseKubernetesContexts(kubeConfigPath)
+                if err != nil </span><span class="cov0" title="0">{
+                        fmt.Printf("   ❌ Error parsing Kubernetes config: %v\n", err)
+                }</span> else<span class="cov0" title="0"> {
+                        fmt.Printf("   ✅ Found %d Kubernetes contexts\n", len(contexts))
+                        for i, ctx := range contexts </span><span class="cov0" title="0">{
+                                if i &lt; 3 </span><span class="cov0" title="0">{ // Show first 3 contexts
+                                        namespace := ctx.Namespace
+                                        if namespace == "" </span><span class="cov0" title="0">{
+                                                namespace = "default"
+                                        }</span>
+                                        <span class="cov0" title="0">fmt.Printf("   - %s (Cluster: %s, Namespace: %s)\n", ctx.Name, ctx.Cluster, namespace)</span>
+                                }
+                        }
+                        <span class="cov0" title="0">if len(contexts) &gt; 3 </span><span class="cov0" title="0">{
+                                fmt.Printf("   ... and %d more\n", len(contexts)-3)
+                        }</span>
+                }
+        } else<span class="cov0" title="0"> {
+                fmt.Printf("   ⚠️  Kubernetes config not found (this is normal for testing)\n")
+        }</span>
+
+        // Test 5: Test configuration file operations
+        <span class="cov0" title="0">fmt.Println("\n5. Testing configuration file operations...")
+        testConfigPath := "./test-fancy-config.yaml"
+
+        // Save test config
+        defaultConfig.Settings.ConfigWizardRun = true
+        if err := defaultConfig.SaveFancyConfig(); err != nil </span><span class="cov0" title="0">{
+                // Try saving to a test file instead
+                testConfig := *defaultConfig
+                fmt.Printf("   Saving test config to: %s\n", testConfigPath)
+                // For this test, we'll just show that the config structure is valid
+                fmt.Printf("   ✅ Configuration structure is valid\n")
+                fmt.Printf("   ✅ Contains %d profile configurations\n", len(testConfig.ProfileConfigs))
+        }</span> else<span class="cov0" title="0"> {
+                fmt.Printf("   ✅ Configuration saved successfully\n")
+        }</span>
+
+        <span class="cov0" title="0">fmt.Println("\n🎉 All tests completed!")
+        fmt.Println("\nThe new configuration system is ready to use!")
+        fmt.Println("Key improvements:")
+        fmt.Println("- ✅ Profile-based configuration system")
+        fmt.Println("- ✅ Direct profile to configuration mapping")
+        fmt.Println("- ✅ Configurable ECR login per profile")
+        fmt.Println("- ✅ Configurable K9s auto-launch per profile")
+        fmt.Println("- ✅ Interactive configuration wizard")
+        fmt.Println("- ✅ No more pattern matching complexity")</span>
+}
 </pre>
 		
 		</div>

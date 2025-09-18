@@ -40,7 +40,10 @@ func captureOutput(f func()) string {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, err := io.Copy(&buf, r)
+	if err != nil {
+		return ""
+	}
 	return buf.String()
 }
 
@@ -167,9 +170,8 @@ func TestDie(t *testing.T) {
 
 	// Test that Die method exists (this will compile if it exists)
 	dieFunc := logger.Die
-	if dieFunc == nil {
-		t.Error("Die method should exist on Logger")
-	}
+	// Function pointers are never nil, so we just verify it exists
+	_ = dieFunc
 }
 
 func TestLoggerVerbosityToggle(t *testing.T) {

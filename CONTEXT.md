@@ -20,8 +20,8 @@ Successfully migrated the shell-based fancy-login utility to Go, maintaining ful
    - Context mapping via `.fancy-contexts.conf` with wildcard support
    - Silent context switching with summary display
 
-3. **ECR Authentication for Development**
-   - Automatic ECR login for profiles containing `_DEV_`
+3. **ECR Authentication**
+   - Configurable ECR login per profile via wizard configuration
    - Docker credential helper integration
    - Regional ECR endpoint support
    - Account ID detection and validation
@@ -41,10 +41,10 @@ Successfully migrated the shell-based fancy-login utility to Go, maintaining ful
 ### Advanced Features
 
 **Intelligent Profile Handling:**
-- Wildcard pattern matching for AWS profiles (`*_PROD_*`, `*_TEST_*`)
-- DEVENG profile special handling with namespace derivation
-- Development profile detection for ECR login
+- Direct profile-based configuration via interactive wizard
+- Per-profile ECR login, Kubernetes context, and K9s settings
 - Profile validation and session checking
+- Smart configuration updates for new profiles
 
 **User Experience Enhancements:**
 - Colorized output with consistent emoji icons (☁️ AWS, ⎈ k8s, 🐳 ECR, 🦄 Summary)
@@ -66,9 +66,9 @@ Successfully migrated the shell-based fancy-login utility to Go, maintaining ful
 2. Select AWS profile from fzf list
 3. Automatic SSO authentication (if needed)  
 4. Auto-select k8s context based on profile mapping
-5. ECR login (if DEV profile)
-6. See colorized summary with derived namespace
-7. Optional k9s launch in correct namespace
+5. ECR login (if configured for profile)
+6. See colorized summary with namespace
+7. Optional k9s launch in correct namespace (if configured)
 
 **DEVENG Profile Workflow:**
 ```bash
@@ -119,9 +119,9 @@ fancy-go
 - Only applies to profiles ending in `DEVENG`
 
 **ECR Login Behavior:**
-- Triggered only for profiles containing `_DEV_`
+- Configurable per profile via configuration wizard
 - Gets AWS account ID from `aws sts get-caller-identity`
-- Uses configured region or `FANCY_DEFAULT_REGION`
+- Uses configured region for the profile
 - Authenticates with ECR using `aws ecr get-login-password`
 - Pipes credentials to `docker login` command
 - Shows success/failure in summary output
@@ -162,15 +162,129 @@ fancy-go
 - Invalid namespace patterns logged but don't break execution
 - k9s launch failures don't affect overall workflow success
 
+## Configuration Management System
+
+### Profile-Based Configuration
+The application now uses a modern profile-based configuration system that replaces pattern matching with direct profile configuration:
+
+**Configuration File Location:**
+- Primary: `~/.fancy-config.yaml` (user's home directory)
+- Development: `./.fancy-config.yaml` (local development override)
+
+**Profile Configuration Structure:**
+```yaml
+profile_configs:
+  MD_DEV_ADMIN:
+    name: MD_DEV_ADMIN
+    account_id: "774305606488"
+    ecr_login: true
+    ecr_region: eu-central-1
+    k8s_context: ""
+    k9s_auto_launch: false
+  MD_PROD_DEVENG:
+    name: MD_PROD_DEVENG
+    account_id: "108782075333"
+    ecr_login: false
+    ecr_region: ""
+    k8s_context: "prod-cluster"
+    k9s_auto_launch: true
+settings:
+  default_region: eu-central-1
+  config_wizard_run: true
+  prefer_local_configs: true
+```
+
+### Interactive Configuration Wizard
+
+**Initial Setup:**
+```bash
+fancy-login-go --config
+```
+
+**Wizard Features:**
+- **Profile Discovery**: Automatically detects AWS profiles and Kubernetes contexts
+- **Smart Configuration**: Shows existing configurations and allows selective updates
+- **Profile Status**: Visual indicators show which profiles are already configured
+- **Context Selection**: Interactive selection of Kubernetes contexts per profile
+- **ECR Configuration**: Per-profile ECR login settings with region selection
+- **K9s Settings**: Auto-launch configuration for each profile
+
+**Wizard Modes:**
+1. **First Run**: Configure all discovered profiles
+2. **Add New Profiles**: Only configure newly discovered profiles (default)
+3. **Override All**: Reconfigure all profiles (with confirmation)
+
+**Rerun Behavior:**
+When the wizard detects existing configuration:
+```
+📋 Found existing configuration with 20 profiles
+Configuration mode:
+  1. Override all (reconfigure all profiles)
+  2. Add new profiles only (keep existing, add new ones)
+Choice [2]:
+```
+
+**Profile Configuration Flow:**
+1. **Profile Selection**: Choose which profiles to configure
+2. **ECR Login**: Enable/disable ECR authentication per profile
+3. **ECR Region**: Set region for ECR login (defaults to profile region)
+4. **Kubernetes Context**: Select from available contexts or "None"
+5. **K9s Auto-launch**: Enable automatic K9s launch for profiles with contexts
+
+**Configuration Benefits:**
+- **Granular Control**: Each profile has individual settings
+- **Easy Updates**: Add new profiles without affecting existing ones
+- **Visual Feedback**: Clear status indicators for configured profiles
+- **Consistent Prompts**: Standardized `[Y/n]` and `[y/N]` defaults
+- **Safe Operation**: Confirmation prompts for destructive operations
+- **Reliability**: No hanging on empty contexts or failed interactive selections
+- **Timeout Protection**: 60-second safety timeout prevents indefinite waiting
+
+### Migration from Pattern-Based System
+- **Backward Compatibility**: Old `.fancy-contexts.conf` still supported as fallback
+- **DEV Profile Logic**: Removed automatic DEV profile handling
+- **Direct Mapping**: Profile names directly map to configurations
+- **Simplified Logic**: No more complex pattern matching or special cases
+- **Empty Context Handling**: Profiles with empty `k8s_context` skip context switching entirely
+- **Timeout Protection**: All interactive selections timeout after 60 seconds to prevent hanging
+
+### Reliability and Error Handling
+
+**Interactive Selection Improvements:**
+- **Hanging Prevention**: 60-second timeout on all `fzf` interactive selections
+- **Empty Context Logic**: Profiles with no configured context skip selection entirely
+- **Clear Error Messages**: Descriptive timeout and failure messages
+- **Graceful Degradation**: Fallback behaviors when selections fail
+
+**Profile Execution Flow:**
+1. **Configured Context**: Direct context switch without user interaction
+2. **Empty Context**: Skip context switching, show "(not configured for this profile)"
+3. **Legacy Fallback**: Interactive selection with 60-second timeout protection
+4. **Timeout Handling**: Clear error message and graceful exit after timeout
+
+**Common Scenarios:**
+- **OV_DEV_ADMIN** (empty `k8s_context`): Shows "not configured" and continues
+- **MD_PROD_DEVENG** (configured context): Automatically switches to `prod-cluster`
+- **Unconfigured Profiles**: Interactive selection with timeout protection
+- **Terminal Issues**: Timeout prevents indefinite hanging in non-interactive environments
+
 ## What Was Accomplished
 - ✅ Complete Go port of all shell functionality
-- ✅ Preserved exact behavior and user experience  
+- ✅ Preserved exact behavior and user experience
 - ✅ Maintained compatibility with existing config files
 - ✅ Added proper error handling and logging
 - ✅ Created installation script and documentation
-- ✅ Implemented GitLab CI/CD pipeline with lint, build, and release stages
+- ✅ Implemented comprehensive GitHub Actions CI/CD pipeline with security scanning
 - ✅ Added version flag functionality for build information retrieval
 - ✅ Created secure configuration template system for AWS and Kubernetes configs
+- ✅ **NEW**: Implemented profile-based configuration system with interactive wizard
+- ✅ **NEW**: Added smart configuration update modes (add new vs override all)
+- ✅ **NEW**: Created per-profile ECR login, Kubernetes context, and K9s settings
+- ✅ **NEW**: Removed legacy DEV profile special handling for cleaner logic
+- ✅ **NEW**: Added intelligent empty context handling (skips interactive selection)
+- ✅ **NEW**: Implemented 60-second timeouts for all interactive selections to prevent hanging
+- ✅ **NEW**: Added package manager support (Homebrew) for easy installation
+- ✅ **NEW**: Implemented automated release management with downloadable archives
 
 ## Architecture
 
@@ -199,11 +313,22 @@ go-fancy-login/
 
 ### Key Components
 
-**config/config.go:**
-- Handles environment variables and configuration loading
-- Parses `.fancy-contexts.conf` and `.fancy-namespaces.conf` files
-- Provides wildcard pattern matching for AWS profiles
-- Derives namespaces from DEVENG profile patterns
+**config/fancy_config.go:**
+- Modern YAML-based profile configuration system
+- Direct profile-to-settings mapping without pattern matching
+- Per-profile ECR login, Kubernetes context, and K9s settings
+- Configuration file management and path resolution
+
+**config/wizard.go:**
+- Interactive configuration wizard with profile discovery
+- Smart update modes (add new vs override all)
+- Visual status indicators for existing configurations
+- Consistent prompt handling with proper defaults
+
+**config/parsers.go:**
+- AWS profile parsing from `~/.aws/config`
+- Kubernetes context discovery from `~/.kube/config`
+- Backward compatibility with legacy configuration files
 
 **aws/aws.go:**
 - AWS profile selection using fzf
@@ -212,11 +337,13 @@ go-fancy-login/
 - Account ID retrieval
 - Temp file creation for shell integration
 
-**k8s/k8s.go:**  
+**k8s/k8s.go:**
 - Kubernetes context selection and switching
 - iTerm2 integration (tab titles and badges)
 - k9s launching with proper namespace and AWS profile inheritance
-- Context mapping based on AWS profiles
+- Direct context lookup from profile configuration
+- Smart handling of empty contexts (skips selection entirely)
+- Timeout-protected interactive selection for legacy configurations
 
 **utils/logger.go:**
 - Colorized logging with verbose mode support
@@ -271,32 +398,58 @@ OV=mykn-track-overviews
 
 ## CI/CD Pipeline
 
-### GitLab CI Configuration
-The project includes a complete GitLab CI/CD pipeline (`.gitlab-ci.yml`) with three stages:
+### GitHub Actions Workflows
+The project includes comprehensive GitHub Actions workflows for CI/CD automation:
+
+**Main CI/CD Workflow (`.github/workflows/ci.yml`):**
 
 **Lint Stage:**
-- Uses `golangci-lint:v2.4.0-alpine` for code quality analysis
-- Generates GitLab code quality reports
-- Runs with 10-minute timeout for comprehensive analysis
+- Uses latest `golangci-lint` for code quality analysis
+- 10-minute timeout for comprehensive analysis
+- Automatic caching for faster runs
+
+**Test Stage:**
+- Runs tests with race detection and coverage
+- Generates HTML coverage reports
+- Uploads coverage artifacts for review
 
 **Build Stage:**
-- Uses `golang:1.25.1-alpine` matching project Go version
-- Installs goreleaser and gotestsum for advanced build and test capabilities
-- Executes `make build` and `make test` targets
-- Generates JUnit XML test reports for GitLab integration
-- Preserves build artifacts (fancy-login-go binary)
+- Multi-platform builds (Linux, macOS, Windows)
+- Supports AMD64 and ARM64 architectures
+- Version injection from Git tags or commit hashes
+- Creates compressed archives (tar.gz for Unix, zip for Windows)
 
-**Publish Stage:**
-- Triggered only on version tags (`v*.*` pattern)
-- Uses `make release` to create multi-platform release archives
-- Creates checksums and release artifacts
-- Maintains artifacts for 30 days
+**Release Stage:**
+- Automated release creation on tag push
+- Uploads all platform binaries as release assets
+- Generates release notes automatically
+
+**Package Management:**
+- Automated Homebrew formula updates
+- Direct binary downloads with checksums
+- Multi-platform release artifacts
+
+**Additional Workflows:**
+
+**Release Workflow (`.github/workflows/release.yml`):**
+- Triggered on version tags (`v*.*.*`)
+- Generates changelog from Git commits
+- Creates release with downloadable assets
+- Includes SHA256 checksums for verification
+
+**Security Workflow (`.github/workflows/security.yml`):**
+- Daily security scans with Trivy and Gosec
+- CodeQL static analysis
+- Dependency review for pull requests
+- SARIF uploads to GitHub Security tab
 
 **Pipeline Features:**
-- Proxy configuration for corporate environments
 - Go module caching for faster builds
-- Harbor registry integration for container images
-- Parallel job execution for optimal CI performance
+- Parallel job execution
+- Multi-platform binary releases
+- Automated security scanning
+- Release artifact management
+- Package manager integration (Homebrew)
 
 ### Version Management
 
@@ -369,6 +522,23 @@ make test                           # Run test suite
 make lint                           # Code quality analysis
 make release                        # Multi-platform release build
 ```
+
+**Package Manager Installation:**
+```bash
+# Homebrew (macOS/Linux)
+brew install fancy-login-go
+
+# Manual installation from GitHub Releases
+# Download the appropriate archive for your platform
+curl -L https://github.com/[username]/go-fancy-login/releases/latest/download/fancy-login-go-[version]-[platform].tar.gz
+tar -xzf fancy-login-go-[version]-[platform].tar.gz
+sudo mv fancy-login-go /usr/local/bin/
+```
+
+**Release Downloads:**
+- Download platform-specific archives from GitHub Releases
+- Verify checksums using provided SHA256 files
+- Extract and add to PATH
 
 **Shell Setup:** Add to ~/.zshrc and reload
 **Daily Usage:** `fancy-go` or `fancy` (with alias)

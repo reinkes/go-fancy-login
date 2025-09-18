@@ -1,12 +1,14 @@
 package k8s
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"fancy-login/internal/config"
 	"fancy-login/internal/utils"
@@ -14,15 +16,17 @@ import (
 
 // K8sManager handles Kubernetes operations
 type K8sManager struct {
-	config *config.Config
-	logger *utils.Logger
+	config      *config.Config
+	logger      *utils.Logger
+	fancyConfig *config.FancyConfig
 }
 
 // NewK8sManager creates a new Kubernetes manager
-func NewK8sManager(cfg *config.Config, logger *utils.Logger) *K8sManager {
+func NewK8sManager(cfg *config.Config, logger *utils.Logger, fancyConfig *config.FancyConfig) *K8sManager {
 	return &K8sManager{
-		config: cfg,
-		logger: logger,
+		config:      cfg,
+		logger:      logger,
+		fancyConfig: fancyConfig,
 	}
 }
 
@@ -30,11 +34,28 @@ func NewK8sManager(cfg *config.Config, logger *utils.Logger) *K8sManager {
 func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error) {
 	k8s.logger.FancyLog("Entered select_kubernetes_context")
 
-	if k8s.shouldSkipK8sContext(awsProfile) {
-		return k8s.handleDEVProfile(awsProfile)
+	// Check if there's a direct mapping from configuration
+	configuredContext := k8s.fancyConfig.GetK8sContextForProfile(awsProfile)
+	if configuredContext != "" {
+		k8s.logger.FancyLog(fmt.Sprintf("Using configured context: %s", configuredContext))
+
+		if err := k8s.switchK8sContext(configuredContext); err != nil {
+			k8s.logger.LogWarning(fmt.Sprintf("Failed to switch to context %s: %v", configuredContext, err))
+		}
+
+		return k8s.formatContextSummary(configuredContext, awsProfile), nil
 	}
 
-	// Load context mappings
+	// If profile exists but has empty k8s_context, skip Kubernetes context switching
+	if _, err := k8s.fancyConfig.GetProfileConfig(awsProfile); err == nil {
+		k8s.logger.FancyLog(fmt.Sprintf("Profile %s has no Kubernetes context configured, skipping context selection", awsProfile))
+		return fmt.Sprintf("%s🌱 Kubernetes Context:%s (not configured for this profile)",
+			config.Green, config.Reset), nil
+	}
+
+	// Fallback to legacy context mappings for backward compatibility
+
+	// Load context mappings for backward compatibility
 	mappings, err := config.LoadContextMappings()
 	if err != nil {
 		k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
@@ -69,9 +90,10 @@ func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error
 	return k8s.formatContextSummary(context, awsProfile), nil
 }
 
-// HandleK9sLaunch handles launching k9s for DEVENG profiles
+// HandleK9sLaunch handles launching k9s based on configuration
 func (k8s *K8sManager) HandleK9sLaunch(awsProfile string) error {
-	if !strings.HasSuffix(awsProfile, "DEVENG") {
+	// Check if this profile should auto-launch K9s
+	if !k8s.fancyConfig.ShouldAutoLaunchK9s(awsProfile) {
 		return nil
 	}
 
@@ -79,67 +101,18 @@ func (k8s *K8sManager) HandleK9sLaunch(awsProfile string) error {
 		return k8s.launchK9sWithNamespace(awsProfile)
 	}
 
-	fmt.Printf("\n%sDo you want to open k9s in the derived namespace? (y/n): %s", config.Cyan, config.Reset)
+	fmt.Printf("\n%sDo you want to open k9s? (y/n): %s", config.Cyan, config.Reset)
 	var response string
-	fmt.Scanln(&response)
+	_, err := fmt.Scanln(&response)
+	if err != nil {
+		return err
+	}
 
 	if response == "y" {
 		return k8s.launchK9sWithNamespace(awsProfile)
 	}
 
 	return nil
-}
-
-// shouldSkipK8sContext determines if context selection should be skipped for DEV profiles
-func (k8s *K8sManager) shouldSkipK8sContext(awsProfile string) bool {
-	skip := strings.Contains(awsProfile, "_DEV_")
-	k8s.logger.FancyLog(fmt.Sprintf("should_skip_k8s_context: %s matches *_DEV_* = %t", awsProfile, skip))
-	return skip
-}
-
-// handleDEVProfile handles context selection for DEV profiles
-func (k8s *K8sManager) handleDEVProfile(awsProfile string) (string, error) {
-	mappings, err := config.LoadContextMappings()
-	if err != nil {
-		k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
-		mappings = []config.ContextMapping{}
-	}
-
-	var mappedContext string
-	for _, mapping := range mappings {
-		if config.MatchesPattern(awsProfile, mapping.Pattern) {
-			mappedContext = mapping.Context
-			break
-		}
-	}
-
-	// Load namespace mappings
-	namespaceMappings, err := config.LoadNamespaceMappings()
-	if err != nil {
-		k8s.logger.FancyLog(fmt.Sprintf("Failed to load namespace mappings: %v", err))
-		namespaceMappings = make(map[string]string)
-	}
-
-	// Try to get namespace from profile
-	namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
-	if err == nil {
-		k8s.setITerm2Namespace(namespace)
-		if mappedContext != "" {
-			return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s %s(ns: %s)%s",
-				config.Green, config.Reset, config.Bold, mappedContext, config.Reset,
-				config.Cyan, namespace, config.Reset), nil
-		}
-		return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s(ns: %s)%s",
-			config.Green, config.Reset, config.Cyan, namespace, config.Reset), nil
-	}
-
-	if mappedContext != "" {
-		return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s",
-			config.Green, config.Reset, config.Bold, mappedContext, config.Reset), nil
-	}
-
-	return fmt.Sprintf("%s🌱 Kubernetes Context:%s (skipped for DEV profile)",
-		config.Green, config.Reset), nil
 }
 
 // selectContextWithFzf uses fzf to select a Kubernetes context
@@ -158,12 +131,19 @@ func (k8s *K8sManager) selectContextWithFzf() (string, error) {
 		return "", fmt.Errorf("no contexts available")
 	}
 
-	// Use fzf to select
-	fzfCmd := exec.Command("fzf", "--prompt=Select Kubernetes Context: ")
+	// Use fzf to select with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	fzfCmd := exec.CommandContext(ctx, "fzf", "--prompt=Select Kubernetes Context: ")
 	fzfCmd.Stdin = strings.NewReader(contexts)
+	fzfCmd.Stderr = os.Stderr
 
 	result, err := fzfCmd.Output()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("context selection timed out after 60 seconds")
+		}
 		return "", err
 	}
 

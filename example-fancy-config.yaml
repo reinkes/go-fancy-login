@@ -1,0 +1,40 @@
+# Example Fancy Login Configuration
+# This demonstrates the new configuration-driven approach
+
+aws_accounts:
+  "123456789012":
+    name: "development"
+    ecr_login: true
+    ecr_region: "eu-central-1"
+    k8s_context: "dev-cluster"
+    k9s_auto_launch: true
+
+  "987654321098":
+    name: "production"
+    ecr_login: false
+    ecr_region: "eu-central-1"
+    k8s_context: "prod-cluster"
+    k9s_auto_launch: false
+
+  "555666777888":
+    name: "staging"
+    ecr_login: true
+    ecr_region: "us-west-2"
+    k8s_context: "staging-cluster"
+    k9s_auto_launch: false
+
+profile_patterns:
+  "*_DEV_*": 
+    account: "123456789012"
+  "*_PROD_*":
+    account: "987654321098"
+  "*_STAGING_*":
+    account: "555666777888"
+  "*DEVENG":
+    account: "123456789012"
+    k9s_auto_launch: true
+
+settings:
+  default_region: "eu-central-1"
+  config_wizard_run: true
+  prefer_local_configs: true
