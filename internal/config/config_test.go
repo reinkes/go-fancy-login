@@ -116,23 +116,18 @@ func TestColorConstants(t *testing.T) {
 
 func TestConfigStruct(t *testing.T) {
 	cfg := &Config{
-		NamespaceConfig: "/test/namespace",
-		AWSProfileTemp:  "/test/aws_profile.sh",
-		DefaultRegion:   "eu-central-1",
-		FancyVerbose:    true,
-		ForceAWSLogin:   true,
-		UseK9S:          true,
-		FancyDebug:      false,
-		BinDir:          "/test/bin",
-		AWSDir:          "/test/.aws",
-		KubeDir:         "/test/.kube",
+		AWSProfileTemp: "/test/aws_profile.sh",
+		DefaultRegion:  "eu-central-1",
+		FancyVerbose:   true,
+		ForceAWSLogin:  true,
+		UseK9S:         true,
+		FancyDebug:     false,
+		BinDir:         "/test/bin",
+		AWSDir:         "/test/.aws",
+		KubeDir:        "/test/.kube",
 	}
 
 	// Test that all fields are accessible and properly set
-	if cfg.NamespaceConfig != "/test/namespace" {
-		t.Errorf("NamespaceConfig = %v, expected /test/namespace", cfg.NamespaceConfig)
-	}
-
 	if cfg.DefaultRegion != "eu-central-1" {
 		t.Errorf("DefaultRegion = %v, expected eu-central-1", cfg.DefaultRegion)
 	}

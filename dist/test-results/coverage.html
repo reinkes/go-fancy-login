@@ -59,7 +59,7 @@
 				
 				<option value="file1">fancy-login/internal/aws/aws.go (0.0%)</option>
 				
-				<option value="file2">fancy-login/internal/config/config.go (18.2%)</option>
+				<option value="file2">fancy-login/internal/config/config.go (85.7%)</option>
 				
 				<option value="file3">fancy-login/internal/config/fancy_config.go (0.0%)</option>
 				
@@ -640,13 +640,9 @@ func (aws *AWSManager) exportProfileToTemp(profile string) error <span class="co
 		<pre class="file" id="file2" style="display: none">package config
 
 import (
-        "bufio"
-        "fmt"
         "os"
         "path/filepath"
-        "regexp"
         "runtime"
-        "strings"
 )
 
 // Colors for terminal output
@@ -661,16 +657,15 @@ const (
 
 // Config holds all configuration for fancy-login
 type Config struct {
-        NamespaceConfig string
-        AWSProfileTemp  string
-        DefaultRegion   string
-        FancyVerbose    bool
-        ForceAWSLogin   bool
-        UseK9S          bool
-        FancyDebug      bool
-        BinDir          string
-        AWSDir          string
-        KubeDir         string
+        AWSProfileTemp string
+        DefaultRegion  string
+        FancyVerbose   bool
+        ForceAWSLogin  bool
+        UseK9S         bool
+        FancyDebug     bool
+        BinDir         string
+        AWSDir         string
+        KubeDir        string
 }
 
 // NewConfig creates a new configuration with defaults
@@ -692,136 +687,22 @@ func NewConfig() *Config <span class="cov6" title="10">{
         }</span>
 
         <span class="cov6" title="10">return &amp;Config{
-                NamespaceConfig: getEnvWithDefault("FANCY_NAMESPACE_CONFIG", filepath.Join(binDir, ".fancy-namespaces.conf")),
-                AWSProfileTemp:  getEnvWithDefault("FANCY_PROFILE_TEMP", awsProfileTemp),
-                DefaultRegion:   getEnvWithDefault("FANCY_DEFAULT_REGION", "eu-central-1"),
-                FancyVerbose:    getEnvBool("FANCY_VERBOSE"),
-                FancyDebug:      getEnvBool("FANCY_DEBUG"),
-                BinDir:          getEnvWithDefault("FANCY_BIN_DIR", binDir),
-                AWSDir:          getEnvWithDefault("FANCY_AWS_DIR", filepath.Join(homeDir, ".aws")),
-                KubeDir:         getEnvWithDefault("FANCY_KUBE_DIR", filepath.Join(homeDir, ".kube")),
+                AWSProfileTemp: getEnvWithDefault("FANCY_PROFILE_TEMP", awsProfileTemp),
+                DefaultRegion:  getEnvWithDefault("FANCY_DEFAULT_REGION", "eu-central-1"),
+                FancyVerbose:   getEnvBool("FANCY_VERBOSE"),
+                FancyDebug:     getEnvBool("FANCY_DEBUG"),
+                BinDir:         getEnvWithDefault("FANCY_BIN_DIR", binDir),
+                AWSDir:         getEnvWithDefault("FANCY_AWS_DIR", filepath.Join(homeDir, ".aws")),
+                KubeDir:        getEnvWithDefault("FANCY_KUBE_DIR", filepath.Join(homeDir, ".kube")),
         }</span>
 }
-
-// ContextMapping represents a mapping from AWS profile pattern to k8s context
-type ContextMapping struct {
-        Pattern string
-        Context string
-}
-
-// LoadContextMappings loads context mappings from .fancy-contexts.conf
-func LoadContextMappings() ([]ContextMapping, error) <span class="cov0" title="0">{
-        cfg := NewConfig()
-        contextConf := filepath.Join(cfg.BinDir, ".fancy-contexts.conf")
-
-        // Check for local config file first
-        if _, err := os.Stat(".fancy-contexts.conf"); err == nil </span><span class="cov0" title="0">{
-                contextConf = ".fancy-contexts.conf"
-        }</span>
-
-        <span class="cov0" title="0">return parseContextFile(contextConf)</span>
-}
-
-// LoadNamespaceMappings loads namespace mappings from .fancy-namespaces.conf
-func LoadNamespaceMappings() (map[string]string, error) <span class="cov0" title="0">{
-        config := NewConfig()
-        return parseNamespaceFile(config.NamespaceConfig)
-}</span>
-
-// parseContextFile parses the context configuration file
-func parseContextFile(filename string) ([]ContextMapping, error) <span class="cov0" title="0">{
-        file, err := os.Open(filename)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, fmt.Errorf("failed to open context config %s: %w", filename, err)
-        }</span>
-        <span class="cov0" title="0">defer file.Close()
-
-        var mappings []ContextMapping
-        scanner := bufio.NewScanner(file)
-
-        for scanner.Scan() </span><span class="cov0" title="0">{
-                line := strings.TrimSpace(scanner.Text())
-                if line == "" || strings.HasPrefix(line, "#") </span><span class="cov0" title="0">{
-                        continue</span>
-                }
-
-                <span class="cov0" title="0">parts := strings.SplitN(line, "=", 2)
-                if len(parts) == 2 </span><span class="cov0" title="0">{
-                        pattern := strings.TrimSpace(parts[0])
-                        context := strings.TrimSpace(parts[1])
-                        mappings = append(mappings, ContextMapping{
-                                Pattern: pattern,
-                                Context: context,
-                        })
-                }</span>
-        }
-
-        <span class="cov0" title="0">return mappings, scanner.Err()</span>
-}
-
-// parseNamespaceFile parses the namespace configuration file
-func parseNamespaceFile(filename string) (map[string]string, error) <span class="cov0" title="0">{
-        file, err := os.Open(filename)
-        if err != nil </span><span class="cov0" title="0">{
-                return nil, fmt.Errorf("failed to open namespace config %s: %w", filename, err)
-        }</span>
-        <span class="cov0" title="0">defer file.Close()
-
-        mappings := make(map[string]string)
-        scanner := bufio.NewScanner(file)
-
-        for scanner.Scan() </span><span class="cov0" title="0">{
-                line := strings.TrimSpace(scanner.Text())
-                if line == "" || strings.HasPrefix(line, "#") </span><span class="cov0" title="0">{
-                        continue</span>
-                }
-
-                <span class="cov0" title="0">parts := strings.SplitN(line, "=", 2)
-                if len(parts) == 2 </span><span class="cov0" title="0">{
-                        code := strings.TrimSpace(parts[0])
-                        project := strings.TrimSpace(parts[1])
-                        mappings[code] = project
-                }</span>
-        }
-
-        <span class="cov0" title="0">return mappings, scanner.Err()</span>
-}
-
-// GetNamespaceFromProfile derives the namespace from AWS profile name
-func GetNamespaceFromProfile(profile string, namespaceMappings map[string]string) (string, error) <span class="cov0" title="0">{
-        // Match pattern like XXX_YYY_DEVENG
-        re := regexp.MustCompile(`^([A-Z]+)_([A-Z]+)_DEVENG$`)
-        matches := re.FindStringSubmatch(profile)
-
-        if len(matches) != 3 </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("profile %s does not match DEVENG pattern", profile)
-        }</span>
-
-        <span class="cov0" title="0">projectCode := matches[1]
-        environment := strings.ToLower(matches[2])
-
-        projectName, exists := namespaceMappings[projectCode]
-        if !exists </span><span class="cov0" title="0">{
-                return "", fmt.Errorf("project code %s not found in namespace config", projectCode)
-        }</span>
-
-        <span class="cov0" title="0">return fmt.Sprintf("%s-%s", environment, projectName), nil</span>
-}
-
-// MatchesPattern checks if a profile matches a wildcard pattern
-func MatchesPattern(profile, pattern string) bool <span class="cov0" title="0">{
-        // Convert shell-style wildcards to regex
-        regexPattern := "^" + strings.ReplaceAll(strings.ReplaceAll(pattern, "*", ".*"), "?", ".") + "$"
-        matched, _ := regexp.MatchString(regexPattern, profile)
-        return matched
-}</span>
 
 // getEnvWithDefault returns environment variable value or default
-func getEnvWithDefault(key, defaultValue string) string <span class="cov10" title="60">{
+func getEnvWithDefault(key, defaultValue string) string <span class="cov10" title="50">{
         if value := os.Getenv(key); value != "" </span><span class="cov2" title="2">{
                 return value
         }</span>
-        <span class="cov9" title="58">return defaultValue</span>
+        <span class="cov9" title="48">return defaultValue</span>
 }
 
 // getEnvBool returns environment variable as boolean
@@ -1642,29 +1523,7 @@ func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error
                         config.Green, config.Reset), nil
         }</span>
 
-        // Fallback to legacy context mappings for backward compatibility
-
-        // Load context mappings for backward compatibility
-        <span class="cov0" title="0">mappings, err := config.LoadContextMappings()
-        if err != nil </span><span class="cov0" title="0">{
-                k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
-                mappings = []config.ContextMapping{}
-        }</span>
-
-        // Check for mapped context
-        <span class="cov0" title="0">for _, mapping := range mappings </span><span class="cov0" title="0">{
-                if config.MatchesPattern(awsProfile, mapping.Pattern) </span><span class="cov0" title="0">{
-                        k8s.logger.FancyLog(fmt.Sprintf("Matched pattern: %s, using context: %s", mapping.Pattern, mapping.Context))
-
-                        if err := k8s.switchK8sContext(mapping.Context); err != nil </span><span class="cov0" title="0">{
-                                k8s.logger.LogWarning(fmt.Sprintf("Failed to switch to context %s: %v", mapping.Context, err))
-                        }</span>
-
-                        <span class="cov0" title="0">return k8s.formatContextSummary(mapping.Context, awsProfile), nil</span>
-                }
-        }
-
-        // No mapping found, use fzf to select
+        // No profile configuration found, use fzf to select
         <span class="cov0" title="0">context, err := k8s.selectContextWithFzf()
         if err != nil </span><span class="cov0" title="0">{
                 k8s.logger.FancyLog("No context selected or error occurred")
@@ -1773,13 +1632,18 @@ func (k8s *K8sManager) getCurrentContextSummary(awsProfile string) (string, erro
 
 // formatContextSummary formats the context summary with namespace if available
 func (k8s *K8sManager) formatContextSummary(context, awsProfile string) string <span class="cov0" title="0">{
-        namespaceMappings, err := config.LoadNamespaceMappings()
+        profileConfig, err := k8s.fancyConfig.GetProfileConfig(awsProfile)
+        var namespace string
         if err != nil </span><span class="cov0" title="0">{
-                namespaceMappings = make(map[string]string)
-        }</span>
+                namespace = "default"
+        }</span> else<span class="cov0" title="0"> {
+                namespace = profileConfig.NamespacePrefix
+                if namespace == "" </span><span class="cov0" title="0">{
+                        namespace = "default"
+                }</span>
+        }
 
-        <span class="cov0" title="0">namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
-        if err == nil </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if namespace != "default" </span><span class="cov0" title="0">{
                 k8s.setITerm2Namespace(namespace)
                 return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s %s(ns: %s)%s",
                         config.Green, config.Reset, config.Bold, context, config.Reset,
@@ -1822,15 +1686,17 @@ func (k8s *K8sManager) setITerm2Namespace(namespace string) <span class="cov0" t
 
 // launchK9sWithNamespace launches k9s with the derived namespace
 func (k8s *K8sManager) launchK9sWithNamespace(awsProfile string) error <span class="cov0" title="0">{
-        namespaceMappings, err := config.LoadNamespaceMappings()
+        profileConfig, err := k8s.fancyConfig.GetProfileConfig(awsProfile)
         if err != nil </span><span class="cov0" title="0">{
-                return fmt.Errorf("failed to load namespace mappings: %w", err)
+                return fmt.Errorf("profile %s not configured: %w", awsProfile, err)
         }</span>
 
-        <span class="cov0" title="0">namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
-        if err != nil </span><span class="cov0" title="0">{
-                k8s.logger.LogError(fmt.Sprintf("Unable to derive namespace from profile: %s", awsProfile))
-                return err
+        // Use namespace prefix from profile configuration
+        <span class="cov0" title="0">namespace := profileConfig.NamespacePrefix
+        if namespace == "" </span><span class="cov0" title="0">{
+                // Fallback to default namespace if no namespace prefix configured
+                namespace = "default"
+                k8s.logger.LogWarning(fmt.Sprintf("No namespace prefix configured for profile %s, using default", awsProfile))
         }</span>
 
         <span class="cov0" title="0">k8s.logger.FancyLog(fmt.Sprintf("Launching k9s in %s.", namespace))

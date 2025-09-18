@@ -53,29 +53,7 @@ func (k8s *K8sManager) SelectKubernetesContext(awsProfile string) (string, error
 			config.Green, config.Reset), nil
 	}
 
-	// Fallback to legacy context mappings for backward compatibility
-
-	// Load context mappings for backward compatibility
-	mappings, err := config.LoadContextMappings()
-	if err != nil {
-		k8s.logger.FancyLog(fmt.Sprintf("Failed to load context mappings: %v", err))
-		mappings = []config.ContextMapping{}
-	}
-
-	// Check for mapped context
-	for _, mapping := range mappings {
-		if config.MatchesPattern(awsProfile, mapping.Pattern) {
-			k8s.logger.FancyLog(fmt.Sprintf("Matched pattern: %s, using context: %s", mapping.Pattern, mapping.Context))
-
-			if err := k8s.switchK8sContext(mapping.Context); err != nil {
-				k8s.logger.LogWarning(fmt.Sprintf("Failed to switch to context %s: %v", mapping.Context, err))
-			}
-
-			return k8s.formatContextSummary(mapping.Context, awsProfile), nil
-		}
-	}
-
-	// No mapping found, use fzf to select
+	// No profile configuration found, use fzf to select
 	context, err := k8s.selectContextWithFzf()
 	if err != nil {
 		k8s.logger.FancyLog("No context selected or error occurred")
@@ -184,13 +162,18 @@ func (k8s *K8sManager) getCurrentContextSummary(awsProfile string) (string, erro
 
 // formatContextSummary formats the context summary with namespace if available
 func (k8s *K8sManager) formatContextSummary(context, awsProfile string) string {
-	namespaceMappings, err := config.LoadNamespaceMappings()
+	profileConfig, err := k8s.fancyConfig.GetProfileConfig(awsProfile)
+	var namespace string
 	if err != nil {
-		namespaceMappings = make(map[string]string)
+		namespace = "default"
+	} else {
+		namespace = profileConfig.NamespacePrefix
+		if namespace == "" {
+			namespace = "default"
+		}
 	}
 
-	namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
-	if err == nil {
+	if namespace != "default" {
 		k8s.setITerm2Namespace(namespace)
 		return fmt.Sprintf("%s🌱 Kubernetes Context:%s %s%s%s %s(ns: %s)%s",
 			config.Green, config.Reset, config.Bold, context, config.Reset,
@@ -233,15 +216,17 @@ func (k8s *K8sManager) setITerm2Namespace(namespace string) {
 
 // launchK9sWithNamespace launches k9s with the derived namespace
 func (k8s *K8sManager) launchK9sWithNamespace(awsProfile string) error {
-	namespaceMappings, err := config.LoadNamespaceMappings()
+	profileConfig, err := k8s.fancyConfig.GetProfileConfig(awsProfile)
 	if err != nil {
-		return fmt.Errorf("failed to load namespace mappings: %w", err)
+		return fmt.Errorf("profile %s not configured: %w", awsProfile, err)
 	}
 
-	namespace, err := config.GetNamespaceFromProfile(awsProfile, namespaceMappings)
-	if err != nil {
-		k8s.logger.LogError(fmt.Sprintf("Unable to derive namespace from profile: %s", awsProfile))
-		return err
+	// Use namespace prefix from profile configuration
+	namespace := profileConfig.NamespacePrefix
+	if namespace == "" {
+		// Fallback to default namespace if no namespace prefix configured
+		namespace = "default"
+		k8s.logger.LogWarning(fmt.Sprintf("No namespace prefix configured for profile %s, using default", awsProfile))
 	}
 
 	k8s.logger.FancyLog(fmt.Sprintf("Launching k9s in %s.", namespace))
