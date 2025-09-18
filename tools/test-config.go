@@ -23,13 +23,13 @@ func main() {
 
 	// Add some test data
 	defaultConfig.ProfileConfigs["mycompany_DEV_developer"] = config.ProfileConfig{
-		Name:            "mycompany_DEV_developer",
-		AccountID:       "123456789012",
-		ECRLogin:        true,
-		ECRRegion:       "eu-central-1",
-		K8sContext:      "dev-cluster",
-		K9sAutoLaunch:   true,
-		NamespacePrefix: "dev",
+		Name:          "mycompany_DEV_developer",
+		AccountID:     "123456789012",
+		ECRLogin:      true,
+		ECRRegion:     "eu-central-1",
+		K8sContext:    "dev-cluster",
+		K9sAutoLaunch: true,
+		Namespace:     "dev-myapp",
 	}
 
 	// Test profile matching

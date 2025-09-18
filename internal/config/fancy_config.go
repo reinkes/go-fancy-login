@@ -16,13 +16,13 @@ type FancyConfig struct {
 
 // ProfileConfig holds configuration for a specific AWS profile
 type ProfileConfig struct {
-	Name            string `yaml:"name"`
-	AccountID       string `yaml:"account_id,omitempty"`
-	ECRLogin        bool   `yaml:"ecr_login"`
-	ECRRegion       string `yaml:"ecr_region"`
-	K8sContext      string `yaml:"k8s_context"`
-	K9sAutoLaunch   bool   `yaml:"k9s_auto_launch"`
-	NamespacePrefix string `yaml:"namespace_prefix,omitempty"`
+	Name          string `yaml:"name"`
+	AccountID     string `yaml:"account_id,omitempty"`
+	ECRLogin      bool   `yaml:"ecr_login"`
+	ECRRegion     string `yaml:"ecr_region"`
+	K8sContext    string `yaml:"k8s_context"`
+	K9sAutoLaunch bool   `yaml:"k9s_auto_launch"`
+	Namespace     string `yaml:"namespace,omitempty"`
 }
 
 // GlobalSettings contains global configuration options

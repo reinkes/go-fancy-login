@@ -263,6 +263,7 @@ type ProfileConfiguration struct {
 	ECRRegion     string
 	K8sContext    string
 	K9sAutoLaunch bool
+	Namespace     string
 }
 
 // getProfileConfiguration gets configuration for a specific profile
@@ -312,6 +313,15 @@ func (w *ConfigWizard) getProfileConfiguration(profile AWSProfile) (*ProfileConf
 		fmt.Printf("Auto-launch K9s for profile %s? [y/N]: ", profile.Name)
 		k9sInput := w.readInput()
 		config.K9sAutoLaunch = k9sInput != "" && strings.ToLower(k9sInput)[0] == 'y'
+
+		// Kubernetes namespace (optional)
+		if config.K9sAutoLaunch {
+			fmt.Printf("Kubernetes namespace for K9s (optional) [default]: ")
+			namespaceInput := w.readInput()
+			if namespaceInput != "" && namespaceInput != "default" {
+				config.Namespace = namespaceInput
+			}
+		}
 	}
 
 	return config, nil

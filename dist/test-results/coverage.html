@@ -730,13 +730,13 @@ type FancyConfig struct {
 
 // ProfileConfig holds configuration for a specific AWS profile
 type ProfileConfig struct {
-        Name            string `yaml:"name"`
-        AccountID       string `yaml:"account_id,omitempty"`
-        ECRLogin        bool   `yaml:"ecr_login"`
-        ECRRegion       string `yaml:"ecr_region"`
-        K8sContext      string `yaml:"k8s_context"`
-        K9sAutoLaunch   bool   `yaml:"k9s_auto_launch"`
-        NamespacePrefix string `yaml:"namespace_prefix,omitempty"`
+        Name          string `yaml:"name"`
+        AccountID     string `yaml:"account_id,omitempty"`
+        ECRLogin      bool   `yaml:"ecr_login"`
+        ECRRegion     string `yaml:"ecr_region"`
+        K8sContext    string `yaml:"k8s_context"`
+        K9sAutoLaunch bool   `yaml:"k9s_auto_launch"`
+        Namespace     string `yaml:"namespace,omitempty"`
 }
 
 // GlobalSettings contains global configuration options
@@ -1337,6 +1337,7 @@ type ProfileConfiguration struct {
         ECRRegion     string
         K8sContext    string
         K9sAutoLaunch bool
+        Namespace     string
 }
 
 // getProfileConfiguration gets configuration for a specific profile
@@ -1386,7 +1387,16 @@ func (w *ConfigWizard) getProfileConfiguration(profile AWSProfile) (*ProfileConf
                 fmt.Printf("Auto-launch K9s for profile %s? [y/N]: ", profile.Name)
                 k9sInput := w.readInput()
                 config.K9sAutoLaunch = k9sInput != "" &amp;&amp; strings.ToLower(k9sInput)[0] == 'y'
-        }</span>
+
+                // Kubernetes namespace (optional)
+                if config.K9sAutoLaunch </span><span class="cov0" title="0">{
+                        fmt.Printf("Kubernetes namespace for K9s (optional) [default]: ")
+                        namespaceInput := w.readInput()
+                        if namespaceInput != "" &amp;&amp; namespaceInput != "default" </span><span class="cov0" title="0">{
+                                config.Namespace = namespaceInput
+                        }</span>
+                }
+        }
 
         <span class="cov0" title="0">return config, nil</span>
 }
@@ -1637,7 +1647,7 @@ func (k8s *K8sManager) formatContextSummary(context, awsProfile string) string <
         if err != nil </span><span class="cov0" title="0">{
                 namespace = "default"
         }</span> else<span class="cov0" title="0"> {
-                namespace = profileConfig.NamespacePrefix
+                namespace = profileConfig.Namespace
                 if namespace == "" </span><span class="cov0" title="0">{
                         namespace = "default"
                 }</span>
@@ -1691,12 +1701,11 @@ func (k8s *K8sManager) launchK9sWithNamespace(awsProfile string) error <span cla
                 return fmt.Errorf("profile %s not configured: %w", awsProfile, err)
         }</span>
 
-        // Use namespace prefix from profile configuration
-        <span class="cov0" title="0">namespace := profileConfig.NamespacePrefix
+        // Use namespace from profile configuration
+        <span class="cov0" title="0">namespace := profileConfig.Namespace
         if namespace == "" </span><span class="cov0" title="0">{
-                // Fallback to default namespace if no namespace prefix configured
+                // Use default namespace if no namespace configured
                 namespace = "default"
-                k8s.logger.LogWarning(fmt.Sprintf("No namespace prefix configured for profile %s, using default", awsProfile))
         }</span>
 
         <span class="cov0" title="0">k8s.logger.FancyLog(fmt.Sprintf("Launching k9s in %s.", namespace))
@@ -1838,13 +1847,13 @@ func main() <span class="cov0" title="0">{
 
         // Add some test data
         defaultConfig.ProfileConfigs["mycompany_DEV_developer"] = config.ProfileConfig{
-                Name:            "mycompany_DEV_developer",
-                AccountID:       "123456789012",
-                ECRLogin:        true,
-                ECRRegion:       "eu-central-1",
-                K8sContext:      "dev-cluster",
-                K9sAutoLaunch:   true,
-                NamespacePrefix: "dev",
+                Name:          "mycompany_DEV_developer",
+                AccountID:     "123456789012",
+                ECRLogin:      true,
+                ECRRegion:     "eu-central-1",
+                K8sContext:    "dev-cluster",
+                K9sAutoLaunch: true,
+                Namespace:     "dev-myapp",
         }
 
         // Test profile matching

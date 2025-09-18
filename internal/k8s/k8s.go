@@ -167,7 +167,7 @@ func (k8s *K8sManager) formatContextSummary(context, awsProfile string) string {
 	if err != nil {
 		namespace = "default"
 	} else {
-		namespace = profileConfig.NamespacePrefix
+		namespace = profileConfig.Namespace
 		if namespace == "" {
 			namespace = "default"
 		}
@@ -221,12 +221,11 @@ func (k8s *K8sManager) launchK9sWithNamespace(awsProfile string) error {
 		return fmt.Errorf("profile %s not configured: %w", awsProfile, err)
 	}
 
-	// Use namespace prefix from profile configuration
-	namespace := profileConfig.NamespacePrefix
+	// Use namespace from profile configuration
+	namespace := profileConfig.Namespace
 	if namespace == "" {
-		// Fallback to default namespace if no namespace prefix configured
+		// Use default namespace if no namespace configured
 		namespace = "default"
-		k8s.logger.LogWarning(fmt.Sprintf("No namespace prefix configured for profile %s, using default", awsProfile))
 	}
 
 	k8s.logger.FancyLog(fmt.Sprintf("Launching k9s in %s.", namespace))
