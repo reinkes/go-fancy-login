@@ -1,52 +1,8 @@
 package main
 
 import (
-	"strings"
 	"testing"
 )
-
-func TestContainsDev(t *testing.T) {
-	tests := []struct {
-		name     string
-		profile  string
-		expected bool
-	}{
-		{
-			name:     "Profile with _DEV_ should return true",
-			profile:  "PROJECT_DEV_ENVIRONMENT",
-			expected: true,
-		},
-		{
-			name:     "Profile without _DEV_ should return false",
-			profile:  "PROJECT_PROD_ENVIRONMENT",
-			expected: false,
-		},
-		{
-			name:     "Empty profile should return false",
-			profile:  "",
-			expected: false,
-		},
-		{
-			name:     "Profile with dev (lowercase) should return false",
-			profile:  "PROJECT_dev_ENVIRONMENT",
-			expected: false,
-		},
-		{
-			name:     "Profile with DEV but not _DEV_ should return false",
-			profile:  "PROJECTDEVENVIRONMENT",
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := containsDev(tt.profile)
-			if result != tt.expected {
-				t.Errorf("containsDev(%q) = %v, expected %v", tt.profile, result, tt.expected)
-			}
-		})
-	}
-}
 
 func TestVersionVariables(t *testing.T) {
 	// Test that version variables are initialized with default values
@@ -94,40 +50,5 @@ func TestFlagVariables(t *testing.T) {
 	}
 	if versionFlag == nil {
 		t.Error("versionFlag should be initialized")
-	}
-}
-
-// Benchmark the containsDev function
-func BenchmarkContainsDev(b *testing.B) {
-	testProfile := "OV_DEV_ENVIRONMENT"
-	for i := 0; i < b.N; i++ {
-		containsDev(testProfile)
-	}
-}
-
-// Test edge cases for profile names
-func TestContainsDevEdgeCases(t *testing.T) {
-	edgeCases := []struct {
-		profile  string
-		expected bool
-		desc     string
-	}{
-		{"_DEV_", true, "minimal _DEV_ pattern"},
-		{"PREFIX_DEV_SUFFIX", true, "standard pattern"},
-		{"MULTI_DEV_DEV_TEST", true, "multiple _DEV_ occurrences"},
-		{"_DEVELOPMENT_", false, "similar but not exact pattern"},
-		{"DEV", false, "without underscores"},
-		{"_DEV", false, "missing trailing underscore"},
-		{"DEV_", false, "missing leading underscore"},
-		{strings.Repeat("A", 100) + "_DEV_" + strings.Repeat("B", 100), true, "very long profile name"},
-	}
-
-	for _, tc := range edgeCases {
-		t.Run(tc.desc, func(t *testing.T) {
-			result := containsDev(tc.profile)
-			if result != tc.expected {
-				t.Errorf("containsDev(%q) = %v, expected %v (%s)", tc.profile, result, tc.expected, tc.desc)
-			}
-		})
 	}
 }

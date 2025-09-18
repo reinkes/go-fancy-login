@@ -2,6 +2,7 @@ package aws
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"fancy-login/internal/config"
 	"fancy-login/internal/utils"
@@ -16,15 +18,17 @@ import (
 
 // AWSManager handles AWS operations
 type AWSManager struct {
-	config *config.Config
-	logger *utils.Logger
+	config      *config.Config
+	logger      *utils.Logger
+	fancyConfig *config.FancyConfig
 }
 
 // NewAWSManager creates a new AWS manager
-func NewAWSManager(cfg *config.Config, logger *utils.Logger) *AWSManager {
+func NewAWSManager(cfg *config.Config, logger *utils.Logger, fancyConfig *config.FancyConfig) *AWSManager {
 	return &AWSManager{
-		config: cfg,
-		logger: logger,
+		config:      cfg,
+		logger:      logger,
+		fancyConfig: fancyConfig,
 	}
 }
 
@@ -43,12 +47,28 @@ func (aws *AWSManager) SelectAWSProfile() (string, error) {
 
 	aws.logger.FancyLog(fmt.Sprintf("Profiles found: %v", profiles))
 
-	// Use fzf to select profile
-	cmd := exec.Command("fzf", "--prompt=Select AWS Profile: ")
+	// Use fzf to select profile with proper TTY handling and timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "fzf", "--prompt=Select AWS Profile: ")
 	cmd.Stdin = strings.NewReader(strings.Join(profiles, "\n"))
+
+	// fzf needs full terminal access - redirect both stderr and pass through TTY
+	cmd.Stderr = os.Stderr
+
+	// Try to open /dev/tty for fzf to use for input/output
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+		defer tty.Close()
+		// Let fzf use the TTY for its interface
+		cmd.ExtraFiles = []*os.File{tty}
+	}
 
 	output, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("profile selection timed out after 60 seconds")
+		}
 		return "", fmt.Errorf("profile selection failed: %w", err)
 	}
 
@@ -95,7 +115,11 @@ func (aws *AWSManager) HandleAWSLogin(profile string, forceLogin bool) error {
 
 	fmt.Printf("%sDo you want to continue anyway? (y/n): %s", config.Cyan, config.Reset)
 	var response string
-	fmt.Scanln(&response)
+	_, err = fmt.Scanln(&response)
+	if err != nil {
+		aws.logger.LogError(fmt.Sprintf("Error reading user input: %v", err))
+		return err
+	}
 
 	if response != "y" {
 		aws.logger.Die("User chose to exit due to authentication issues.")
@@ -105,13 +129,13 @@ func (aws *AWSManager) HandleAWSLogin(profile string, forceLogin bool) error {
 	return nil
 }
 
-// HandleECRLogin performs ECR login for development profiles
+// HandleECRLogin performs ECR login based on configuration
 func (aws *AWSManager) HandleECRLogin(profile string) error {
-	if !strings.Contains(profile, "_DEV_") {
+	if !aws.fancyConfig.ShouldPerformECRLogin(profile) {
 		return nil
 	}
 
-	aws.logger.FancyLog("ECR login for DEV profile...")
+	aws.logger.FancyLog("ECR login based on configuration...")
 
 	accountID, err := aws.getAccountID(profile)
 	if err != nil {
@@ -119,9 +143,12 @@ func (aws *AWSManager) HandleECRLogin(profile string) error {
 		return err
 	}
 
-	region := os.Getenv("AWS_REGION")
+	region := aws.fancyConfig.GetECRRegionForProfile(profile)
 	if region == "" {
-		region = aws.config.DefaultRegion
+		region = os.Getenv("AWS_REGION")
+		if region == "" {
+			region = aws.config.DefaultRegion
+		}
 	}
 
 	aws.logger.FancyLog(fmt.Sprintf("Account ID: %s, Region: %s", accountID, region))
@@ -293,7 +320,7 @@ func (aws *AWSManager) performSSOMLogin(profile string) error {
 	return nil
 }
 
-// getAccountID retrieves the AWS account ID
+// getAccountID gets the AWS account ID for a profile
 func (aws *AWSManager) getAccountID(profile string) (string, error) {
 	cmd := exec.Command("aws", "sts", "get-caller-identity", "--profile", profile, "--query", "Account", "--output", "text")
 	output, err := cmd.Output()

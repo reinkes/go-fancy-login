@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"fancy-login/internal/aws"
 	"fancy-login/internal/config"
@@ -20,16 +19,18 @@ var (
 
 	// Command-line flags
 	verbose       = flag.Bool("v", false, "Enable verbose output")
-	k9sFlag       = flag.Bool("k", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
+	k9sFlag       = flag.Bool("k", false, "Auto-launch k9s without prompting")
 	forceAWSLogin = flag.Bool("force-aws-login", false, "Force AWS SSO login even if a valid session exists")
+	configFlag    = flag.Bool("config", false, "Run configuration wizard")
 	helpFlag      = flag.Bool("h", false, "Show help message")
 	versionFlag   = flag.Bool("version", false, "Show version information")
 )
 
 func main() {
 	flag.BoolVar(verbose, "verbose", false, "Enable verbose output")
-	flag.BoolVar(k9sFlag, "k9s", false, "Auto-launch k9s without prompting (for DEVENG profiles)")
+	flag.BoolVar(k9sFlag, "k9s", false, "Auto-launch k9s without prompting")
 	flag.BoolVar(helpFlag, "help", false, "Show help message")
+	flag.BoolVar(configFlag, "configure", false, "Run configuration wizard")
 	flag.Parse()
 
 	if *versionFlag {
@@ -40,6 +41,28 @@ func main() {
 	if *helpFlag {
 		showHelp()
 		return
+	}
+
+	if *configFlag {
+		wizard := config.NewConfigWizard()
+		if err := wizard.Run(); err != nil {
+			fmt.Printf("Configuration wizard failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Run configuration wizard if needed
+	if err := config.RunConfigWizardIfNeeded(); err != nil {
+		fmt.Printf("Configuration wizard failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Load fancy configuration
+	fancyConfig, err := config.LoadFancyConfig()
+	if err != nil {
+		fmt.Printf("Failed to load configuration: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Initialize configuration
@@ -57,8 +80,8 @@ func main() {
 	logger := utils.NewLogger(cfg.FancyVerbose)
 
 	// Initialize managers
-	awsManager := aws.NewAWSManager(cfg, logger)
-	k8sManager := k8s.NewK8sManager(cfg, logger)
+	awsManager := aws.NewAWSManager(cfg, logger, fancyConfig)
+	k8sManager := k8s.NewK8sManager(cfg, logger, fancyConfig)
 
 	// Variables to aggregate results
 	var k8sContextResult string
@@ -92,12 +115,12 @@ func main() {
 		accountIDSummary = accountID
 	}
 
-	// Handle ECR login only for _DEV_ profiles
+	// Handle ECR login based on configuration
 	if err := awsManager.HandleECRLogin(awsProfile); err != nil {
 		ecrResult = fmt.Sprintf("%s🐳 ECR login: failed%s", config.Red, config.Reset)
 		ecrAttempted = true
 		logger.FancyLog(fmt.Sprintf("ECR login failed: %v", err))
-	} else if awsProfile != "" && containsDev(awsProfile) {
+	} else if fancyConfig.ShouldPerformECRLogin(awsProfile) {
 		ecrResult = fmt.Sprintf("%s🐳 ECR login: successful%s", config.Green, config.Reset)
 		ecrAttempted = true
 	}
@@ -121,7 +144,7 @@ func main() {
 		fmt.Println()
 	}
 
-	// Handle k9s launch
+	// Handle k9s launch based on configuration
 	if err := k8sManager.HandleK9sLaunch(awsProfile); err != nil {
 		logger.LogError(fmt.Sprintf("Failed to launch k9s: %v", err))
 	}
@@ -133,21 +156,24 @@ func showHelp() {
 	fmt.Printf(`Usage: %s [OPTIONS]
 
 OPTIONS:
-  -k, --k9s           Auto-launch k9s without prompting (for DEVENG profiles)
+  -k, --k9s           Auto-launch k9s without prompting
   -v, --verbose       Enable verbose output
+  --config            Run configuration wizard to set up or update mappings
   --force-aws-login   Force AWS SSO login even if a valid session exists
   -h, --help          Show this help message
   --version           Show version information
 
 Description:
   Interactive tool for AWS SSO login and Kubernetes context selection.
-  Automatically handles ECR login for development profiles and provides
-  namespace-aware k9s integration.
+  Uses configuration-driven logic for ECR login, K9s integration, and
+  AWS-to-Kubernetes context mappings.
   
-  When using -k flag with DEVENG profiles, k9s will launch automatically
-  in the derived namespace without user confirmation.
-  Use -v to enable verbose output for debugging.
-  Use --force-aws-login to always perform AWS SSO login, even if a valid session exists.
+  On first run, the configuration wizard will help you set up mappings
+  between your AWS profiles and Kubernetes contexts by reading your
+  existing ~/.aws/config and ~/.kube/config files.
+  
+  Configuration is stored in ~/.fancy-config.yaml and can be edited manually
+  or regenerated using the wizard.
 
 Version: %s
 Build Time: %s
@@ -159,8 +185,4 @@ func showVersion() {
 	fmt.Printf("fancy-login-go version %s\n", version)
 	fmt.Printf("Build time: %s\n", buildTime)
 	fmt.Printf("Git commit: %s\n", gitCommit)
-}
-
-func containsDev(profile string) bool {
-	return strings.Contains(profile, "_DEV_")
 }
