@@ -53,14 +53,12 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 
 **Homebrew (macOS/Linux):**
 ```bash
-# Add the custom tap
-brew tap reinkes/tap https://github.com/reinkes/homebrew-tap
-
-# Install fancy-login-go
+# Add the custom tap and install
 brew install reinkes/tap/fancy-login-go
 
-# Or in one command
-brew install reinkes/tap/fancy-login-go
+# Or add tap first, then install
+brew tap reinkes/tap
+brew install fancy-login-go
 ```
 
 **Build from Source:**
