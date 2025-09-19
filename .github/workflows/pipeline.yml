@@ -282,19 +282,24 @@ jobs:
       run: |
         # Calculate new SHA256
         SHA256=$(curl -sL https://github.com/reinkes/go-fancy-login/archive/${{ github.event.release.tag_name }}.tar.gz | sha256sum | cut -d' ' -f1)
+        VERSION="${{ github.event.release.tag_name }}"
 
         # Clone tap repository
         git clone https://github.com/reinkes/homebrew-tap.git tap
         cd tap
 
-        # Update formula
-        sed -i "s|url \".*\"|url \"https://github.com/reinkes/go-fancy-login/archive/${{ github.event.release.tag_name }}.tar.gz\"|" Formula/fancy-login-go.rb
-        sed -i "s|sha256 \".*\"|sha256 \"$SHA256\"|" Formula/fancy-login-go.rb
+        # Update formula with more precise regex
+        sed -i "s|archive/.*\.tar\.gz|archive/${VERSION}.tar.gz|" Formula/fancy-login-go.rb
+        sed -i "s|sha256 \"[^\"]*\"|sha256 \"$SHA256\"|" Formula/fancy-login-go.rb
+
+        # Verify changes
+        echo "Updated formula:"
+        cat Formula/fancy-login-go.rb
 
         # Commit and push
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add Formula/fancy-login-go.rb
-        git commit -m "Update fancy-login-go to ${{ github.event.release.tag_name }}"
+        git commit -m "Update fancy-login-go to ${VERSION}"
         git push https://${{ secrets.HOMEBREW_TOKEN }}@github.com/reinkes/homebrew-tap.git main
       continue-on-error: true
