@@ -39,12 +39,27 @@ choco install awscli kubernetes-cli fzf k9s docker-desktop
 scoop install aws kubectl fzf k9s docker
 ```
 
-### 2. Build and Install fancy-login
+### 2. Install fancy-login-go
 
+**Option A: Scoop (Recommended)**
+```powershell
+# Install directly from GitHub
+scoop install https://raw.githubusercontent.com/reinkes/go-fancy-login/main/fancy-login-go.json
+
+# Scoop will suggest any missing dependencies
+```
+
+**Option B: Download from Releases**
+```powershell
+# Download from GitHub Releases and extract to PATH
+# See main README.md for download links
+```
+
+**Option C: Build from Source**
 ```powershell
 # Clone and build
-git clone <your-repo>
-cd fancy-login\go
+git clone https://github.com/reinkes/go-fancy-login.git
+cd go-fancy-login
 .\scripts\install-fancy-go.ps1
 
 # Or with verbose output

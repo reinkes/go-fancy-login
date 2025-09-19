@@ -61,6 +61,16 @@ brew tap reinkes/tap
 brew install fancy-login-go
 ```
 
+**Scoop (Windows):**
+```powershell
+# Install directly from this repository
+scoop install https://raw.githubusercontent.com/reinkes/go-fancy-login/main/fancy-login-go.json
+
+# Scoop will suggest installing dependencies if not found:
+# - aws-cli, kubectl, fzf (required)
+# - k9s, docker (optional)
+```
+
 **Build from Source:**
 ```bash
 git clone https://github.com/reinkes/go-fancy-login.git
