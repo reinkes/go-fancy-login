@@ -312,6 +312,23 @@ make release
 make help
 ```
 
+### Development Setup
+
+For contributors, install Git hooks to ensure code quality:
+
+```bash
+# Install pre-commit hooks (runs linting and tests before commits)
+./scripts/install-hooks.sh
+```
+
+The pre-commit hook will automatically:
+- 📝 Format code with `go fmt`
+- 🔧 Check code with `go vet`
+- 🔍 Run `golangci-lint`
+- 🧪 Run tests
+
+To skip the hook for a specific commit: `git commit --no-verify`
+
 ### Project Structure
 
 ```

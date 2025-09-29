@@ -295,6 +295,7 @@ import (
         "path/filepath"
         "regexp"
         "runtime"
+        "sort"
         "strings"
         "time"
 
@@ -320,25 +321,34 @@ func NewAWSManager(cfg *config.Config, logger *utils.Logger, fancyConfig *config
 
 // SelectAWSProfile allows user to select an AWS profile using fzf
 func (aws *AWSManager) SelectAWSProfile() (string, error) <span class="cov0" title="0">{
-        aws.logger.FancyLog("Select an AWS Profile:")
-
-        profiles, err := aws.getAWSProfiles()
+        displayProfiles, err := aws.getProfilesWithMetadata()
         if err != nil </span><span class="cov0" title="0">{
                 return "", err
         }</span>
 
-        <span class="cov0" title="0">if len(profiles) == 0 </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if len(displayProfiles) == 0 </span><span class="cov0" title="0">{
                 aws.logger.Die("No AWS profiles found in ~/.aws/config")
         }</span>
 
-        <span class="cov0" title="0">aws.logger.FancyLog(fmt.Sprintf("Profiles found: %v", profiles))
+        <span class="cov0" title="0">configuredCount := aws.countConfiguredProfiles(displayProfiles)
+        totalCount := aws.countRealProfiles(displayProfiles)
+
+        aws.logger.FancyLog("☁️ AWS Profile Selection")
+        aws.logger.FancyLog(fmt.Sprintf("Found %d configured profiles out of %d total AWS profiles",
+                configuredCount, totalCount))
+
+        // Create display text for fzf
+        var displayTexts []string
+        for _, p := range displayProfiles </span><span class="cov0" title="0">{
+                displayTexts = append(displayTexts, p.DisplayText)
+        }</span>
 
         // Use fzf to select profile with proper TTY handling and timeout
-        ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+        <span class="cov0" title="0">ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
         defer cancel()
 
         cmd := exec.CommandContext(ctx, "fzf", "--prompt=Select AWS Profile: ")
-        cmd.Stdin = strings.NewReader(strings.Join(profiles, "\n"))
+        cmd.Stdin = strings.NewReader(strings.Join(displayTexts, "\n"))
 
         // fzf needs full terminal access - redirect both stderr and pass through TTY
         cmd.Stderr = os.Stderr
@@ -358,23 +368,83 @@ func (aws *AWSManager) SelectAWSProfile() (string, error) <span class="cov0" tit
                 <span class="cov0" title="0">return "", fmt.Errorf("profile selection failed: %w", err)</span>
         }
 
-        <span class="cov0" title="0">profile := strings.TrimSpace(string(output))
-        if profile == "" </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">selectedDisplayText := strings.TrimSpace(string(output))
+        if selectedDisplayText == "" </span><span class="cov0" title="0">{
                 aws.logger.Die("No profile selected. Exiting.")
         }</span>
 
-        // Remove "profile " prefix if present
-        <span class="cov0" title="0">profile = strings.TrimPrefix(profile, "profile ")
+        // Find the actual profile name from the selected display text
+        <span class="cov0" title="0">var selectedProfile string
+        var isConfigured bool
+        for _, p := range displayProfiles </span><span class="cov0" title="0">{
+                // Handle both exact match and trimmed match (fzf may strip leading whitespace)
+                if p.DisplayText == selectedDisplayText || strings.TrimSpace(p.DisplayText) == selectedDisplayText </span><span class="cov0" title="0">{
+                        selectedProfile = p.Name
+                        isConfigured = p.IsConfigured
+                        break</span>
+                }
+        }
 
-        aws.logger.FancyLog(fmt.Sprintf("Profile selected: %s", profile))
+        // Handle separator selection (shouldn't happen but be safe)
+        <span class="cov0" title="0">if selectedProfile == "---" || selectedProfile == "" </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("invalid profile selection")
+        }</span>
+
+        <span class="cov0" title="0">aws.logger.FancyLog(fmt.Sprintf("Profile selected: %s (configured: %v)", selectedProfile, isConfigured))
+
+        // If profile is not configured, offer to run configuration
+        if !isConfigured </span><span class="cov0" title="0">{
+                aws.logger.LogWarning(fmt.Sprintf("Profile '%s' is not configured in fancy-config", selectedProfile))
+                fmt.Printf("%sWould you like to configure this profile now? (y/N): %s", config.Cyan, config.Reset)
+
+                // Use /dev/tty for proper terminal input handling
+                tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+                if err != nil </span><span class="cov0" title="0">{
+                        aws.logger.LogWarning("Failed to open /dev/tty for input, continuing with unconfigured profile")
+                }</span> else<span class="cov0" title="0"> {
+                        defer tty.Close()
+                        var response string
+                        if _, err := fmt.Fscanln(tty, &amp;response); err != nil </span><span class="cov0" title="0">{
+                                aws.logger.LogWarning("Failed to read user input, continuing with unconfigured profile")
+                        }</span>
+
+                        <span class="cov0" title="0">if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" </span><span class="cov0" title="0">{
+                                aws.logger.LogInfo("Run 'fancy-login-go --config' to configure profiles")
+                                return "", fmt.Errorf("profile configuration needed")
+                        }</span>
+                }
+                <span class="cov0" title="0">aws.logger.LogWarning("Continuing with unconfigured profile...")</span>
+        }
 
         // Export profile to temp file for shell integration
-        if err := aws.exportProfileToTemp(profile); err != nil </span><span class="cov0" title="0">{
+        <span class="cov0" title="0">if err := aws.exportProfileToTemp(selectedProfile); err != nil </span><span class="cov0" title="0">{
                 aws.logger.LogWarning(fmt.Sprintf("Failed to export profile to temp file: %v", err))
         }</span>
 
-        <span class="cov0" title="0">aws.logger.LogSuccess(fmt.Sprintf("Selected AWS Profile: %s", profile))
-        return profile, nil</span>
+        <span class="cov0" title="0">aws.logger.LogSuccess(fmt.Sprintf("Selected AWS Profile: %s", selectedProfile))
+        return selectedProfile, nil</span>
+}
+
+// countConfiguredProfiles counts how many profiles are configured
+func (aws *AWSManager) countConfiguredProfiles(profiles []ProfileDisplayInfo) int <span class="cov0" title="0">{
+        count := 0
+        for _, p := range profiles </span><span class="cov0" title="0">{
+                if p.IsConfigured </span><span class="cov0" title="0">{
+                        count++
+                }</span>
+        }
+        <span class="cov0" title="0">return count</span>
+}
+
+// countRealProfiles counts actual profiles (excludes separators and headers)
+func (aws *AWSManager) countRealProfiles(profiles []ProfileDisplayInfo) int <span class="cov0" title="0">{
+        count := 0
+        for _, p := range profiles </span><span class="cov0" title="0">{
+                if p.Name != "---" &amp;&amp; !strings.HasPrefix(p.DisplayText, "===") &amp;&amp; !strings.HasPrefix(p.DisplayText, "✓") </span><span class="cov0" title="0">{
+                        count++
+                }</span>
+        }
+        <span class="cov0" title="0">return count</span>
 }
 
 // HandleAWSLogin checks and handles AWS SSO authentication
@@ -400,8 +470,17 @@ func (aws *AWSManager) HandleAWSLogin(profile string, forceLogin bool) error <sp
         <span class="cov0" title="0">aws.logger.LogWarning(fmt.Sprintf("Unable to authenticate with profile %s. This might not be an SSO profile.", profile))
 
         fmt.Printf("%sDo you want to continue anyway? (y/n): %s", config.Cyan, config.Reset)
+
+        // Use /dev/tty for proper terminal input handling
+        tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                aws.logger.LogError(fmt.Sprintf("Failed to open /dev/tty for input: %v", err))
+                return err
+        }</span>
+        <span class="cov0" title="0">defer tty.Close()
+
         var response string
-        _, err = fmt.Scanln(&amp;response)
+        _, err = fmt.Fscanln(tty, &amp;response)
         if err != nil </span><span class="cov0" title="0">{
                 aws.logger.LogError(fmt.Sprintf("Error reading user input: %v", err))
                 return err
@@ -498,8 +577,228 @@ func (aws *AWSManager) GetAccountID(profile string) (string, error) <span class=
         return aws.getAccountID(profile)
 }</span>
 
-// getAWSProfiles reads AWS profiles from ~/.aws/config
-func (aws *AWSManager) getAWSProfiles() ([]string, error) <span class="cov0" title="0">{
+// ProfileDisplayInfo holds information for displaying profiles in selection
+type ProfileDisplayInfo struct {
+        Name         string
+        DisplayText  string
+        IsConfigured bool
+        Metadata     string
+}
+
+// getProfilesWithMetadata returns profiles with rich metadata for display
+func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) <span class="cov0" title="0">{
+        // Get profiles from AWS config
+        awsProfiles, err := aws.getAWSConfigProfiles()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">var displayProfiles []ProfileDisplayInfo
+
+        // Separate profiles by type for better organization
+        var k9sProfiles []ProfileDisplayInfo
+        var configuredProfiles []ProfileDisplayInfo
+        configuredCount := 0
+
+        // First pass: collect all profiles and find the longest name for alignment
+        type profileInfo struct {
+                ProfileName string
+                Config      config.ProfileConfig
+                IsK9s       bool
+        }
+        var allConfiguredProfiles []profileInfo
+
+        for profileName := range aws.fancyConfig.ProfileConfigs </span><span class="cov0" title="0">{
+                // Check if this profile exists in AWS config
+                found := false
+                for _, awsProfile := range awsProfiles </span><span class="cov0" title="0">{
+                        if awsProfile == profileName </span><span class="cov0" title="0">{
+                                found = true
+                                break</span>
+                        }
+                }
+
+                <span class="cov0" title="0">if found </span><span class="cov0" title="0">{
+                        profileConfig := aws.fancyConfig.ProfileConfigs[profileName]
+                        allConfiguredProfiles = append(allConfiguredProfiles, profileInfo{
+                                ProfileName: profileName,
+                                Config:      profileConfig,
+                                IsK9s:       profileConfig.K9sAutoLaunch,
+                        })
+                        configuredCount++
+                }</span>
+        }
+
+        // Calculate the maximum length for alignment
+        <span class="cov0" title="0">maxNameLength := 0
+        for _, profile := range allConfiguredProfiles </span><span class="cov0" title="0">{
+                // Use the custom name from config if set, otherwise use the profile name
+                displayName := profile.ProfileName
+                if profile.Config.Name != "" </span><span class="cov0" title="0">{
+                        displayName = profile.Config.Name
+                }</span>
+
+                <span class="cov0" title="0">var prefixedName string
+                if profile.IsK9s </span><span class="cov0" title="0">{
+                        prefixedName = fmt.Sprintf("★ %s", displayName)
+                }</span> else<span class="cov0" title="0"> {
+                        prefixedName = fmt.Sprintf("  %s", displayName)
+                }</span>
+
+                <span class="cov0" title="0">if len(prefixedName) &gt; maxNameLength </span><span class="cov0" title="0">{
+                        maxNameLength = len(prefixedName)
+                }</span>
+        }
+
+        // Second pass: format profiles with proper alignment
+        <span class="cov0" title="0">for _, profile := range allConfiguredProfiles </span><span class="cov0" title="0">{
+                metadata := aws.buildProfileMetadata(profile.Config)
+
+                var displayText string
+                var prefixedName string
+
+                // Use the custom name from config if set, otherwise use the profile name
+                displayName := profile.ProfileName
+                if profile.Config.Name != "" </span><span class="cov0" title="0">{
+                        displayName = profile.Config.Name
+                }</span>
+
+                <span class="cov0" title="0">if profile.IsK9s </span><span class="cov0" title="0">{
+                        prefixedName = fmt.Sprintf("★ %s", displayName)
+                }</span> else<span class="cov0" title="0"> {
+                        prefixedName = fmt.Sprintf("  %s", displayName)
+                }</span>
+
+                // Pad to align the pipe character
+                <span class="cov0" title="0">padding := maxNameLength - len(prefixedName)
+                if padding &lt; 0 </span><span class="cov0" title="0">{
+                        padding = 0
+                }</span>
+
+                <span class="cov0" title="0">if metadata != "" </span><span class="cov0" title="0">{
+                        displayText = fmt.Sprintf("%s%s %s", prefixedName, strings.Repeat(" ", padding), metadata)
+                }</span> else<span class="cov0" title="0"> {
+                        displayText = prefixedName
+                }</span>
+
+                <span class="cov0" title="0">profileInfo := ProfileDisplayInfo{
+                        Name:         profile.ProfileName,
+                        DisplayText:  displayText,
+                        IsConfigured: true,
+                        Metadata:     metadata,
+                }
+
+                if profile.IsK9s </span><span class="cov0" title="0">{
+                        k9sProfiles = append(k9sProfiles, profileInfo)
+                }</span> else<span class="cov0" title="0"> {
+                        configuredProfiles = append(configuredProfiles, profileInfo)
+                }</span>
+        }
+
+        // Sort profiles by display name within each category
+        <span class="cov0" title="0">sort.Slice(k9sProfiles, func(i, j int) bool </span><span class="cov0" title="0">{
+                // Extract display name from DisplayText (remove prefix and metadata)
+                nameI := strings.TrimSpace(strings.Split(k9sProfiles[i].DisplayText, "|")[0])
+                nameJ := strings.TrimSpace(strings.Split(k9sProfiles[j].DisplayText, "|")[0])
+                nameI = strings.TrimPrefix(nameI, "★")
+                nameJ = strings.TrimPrefix(nameJ, "★")
+                return strings.TrimSpace(nameI) &lt; strings.TrimSpace(nameJ)
+        }</span>)
+
+        <span class="cov0" title="0">sort.Slice(configuredProfiles, func(i, j int) bool </span><span class="cov0" title="0">{
+                // Extract display name from DisplayText (remove prefix and metadata)
+                nameI := strings.TrimSpace(strings.Split(configuredProfiles[i].DisplayText, "|")[0])
+                nameJ := strings.TrimSpace(strings.Split(configuredProfiles[j].DisplayText, "|")[0])
+                return strings.TrimSpace(nameI) &lt; strings.TrimSpace(nameJ)
+        }</span>)
+
+        // Add k9s profiles first (most important for daily use)
+        <span class="cov0" title="0">if len(k9sProfiles) &gt; 0 </span><span class="cov0" title="0">{
+                displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                        Name:         "---",
+                        DisplayText:  "=== QUICK ACCESS (K9S AUTO-LAUNCH) ===",
+                        IsConfigured: false,
+                        Metadata:     "",
+                })
+                displayProfiles = append(displayProfiles, k9sProfiles...)
+        }</span>
+
+        // Add other configured profiles
+        <span class="cov0" title="0">if len(configuredProfiles) &gt; 0 </span><span class="cov0" title="0">{
+                if len(k9sProfiles) &gt; 0 </span><span class="cov0" title="0">{
+                        displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                                Name:         "---",
+                                DisplayText:  "",
+                                IsConfigured: false,
+                                Metadata:     "",
+                        })
+                }</span>
+                <span class="cov0" title="0">displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                        Name:         "---",
+                        DisplayText:  "=== OTHER CONFIGURED PROFILES ===",
+                        IsConfigured: false,
+                        Metadata:     "",
+                })
+                displayProfiles = append(displayProfiles, configuredProfiles...)</span>
+        }
+
+        // Add separator if we have both configured and unconfigured profiles
+        <span class="cov0" title="0">unconfiguredProfiles := []string{}
+        for _, awsProfile := range awsProfiles </span><span class="cov0" title="0">{
+                if _, exists := aws.fancyConfig.ProfileConfigs[awsProfile]; !exists </span><span class="cov0" title="0">{
+                        unconfiguredProfiles = append(unconfiguredProfiles, awsProfile)
+                }</span>
+        }
+
+        // Sort unconfigured profiles alphabetically
+        <span class="cov0" title="0">sort.Strings(unconfiguredProfiles)
+
+        if len(unconfiguredProfiles) &gt; 0 </span><span class="cov0" title="0">{
+                if configuredCount &gt; 0 </span><span class="cov0" title="0">{
+                        displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                                Name:         "---",
+                                DisplayText:  "",
+                                IsConfigured: false,
+                                Metadata:     "",
+                        })
+                }</span>
+                <span class="cov0" title="0">displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                        Name:         "---",
+                        DisplayText:  "=== UNCONFIGURED PROFILES ===",
+                        IsConfigured: false,
+                        Metadata:     "",
+                })
+
+                // Add unconfigured profiles
+                for _, profileName := range unconfiguredProfiles </span><span class="cov0" title="0">{
+                        displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                                Name:         profileName,
+                                DisplayText:  fmt.Sprintf("           %s", profileName),
+                                IsConfigured: false,
+                                Metadata:     "",
+                        })
+                }</span>
+        } else<span class="cov0" title="0"> if configuredCount &gt; 0 </span><span class="cov0" title="0">{
+                // Add helpful hint when all profiles are configured
+                displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                        Name:         "---",
+                        DisplayText:  "",
+                        IsConfigured: false,
+                        Metadata:     "",
+                })
+                displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+                        Name:         "---",
+                        DisplayText:  "✓ All AWS profiles are configured! Run --config to modify settings.",
+                        IsConfigured: false,
+                        Metadata:     "",
+                })
+        }</span>
+
+        <span class="cov0" title="0">return displayProfiles, nil</span>
+}
+
+// getAWSConfigProfiles reads AWS profiles from ~/.aws/config
+func (aws *AWSManager) getAWSConfigProfiles() ([]string, error) <span class="cov0" title="0">{
         homeDir, _ := os.UserHomeDir()
         configPath := filepath.Join(homeDir, ".aws", "config")
 
@@ -511,17 +810,46 @@ func (aws *AWSManager) getAWSProfiles() ([]string, error) <span class="cov0" tit
 
         var profiles []string
         re := regexp.MustCompile(`^\[profile\s+(.+)\]`)
+        defaultRe := regexp.MustCompile(`^\[default\]`)
 
         scanner := bufio.NewScanner(file)
         for scanner.Scan() </span><span class="cov0" title="0">{
                 line := strings.TrimSpace(scanner.Text())
-                matches := re.FindStringSubmatch(line)
-                if len(matches) == 2 </span><span class="cov0" title="0">{
+
+                // Check for named profiles
+                if matches := re.FindStringSubmatch(line); len(matches) == 2 </span><span class="cov0" title="0">{
                         profiles = append(profiles, matches[1])
+                }</span>
+                // Check for default profile
+                <span class="cov0" title="0">if defaultRe.MatchString(line) </span><span class="cov0" title="0">{
+                        profiles = append(profiles, "default")
                 }</span>
         }
 
         <span class="cov0" title="0">return profiles, scanner.Err()</span>
+}
+
+// buildProfileMetadata creates a display string with profile configuration info
+func (aws *AWSManager) buildProfileMetadata(config config.ProfileConfig) string <span class="cov0" title="0">{
+        var parts []string
+
+        if config.ECRLogin </span><span class="cov0" title="0">{
+                parts = append(parts, "ECR")
+        }</span>
+
+        <span class="cov0" title="0">if config.K8sContext != "" </span><span class="cov0" title="0">{
+                parts = append(parts, fmt.Sprintf("k8s:%s", config.K8sContext))
+        }</span>
+
+        <span class="cov0" title="0">if config.K9sAutoLaunch </span><span class="cov0" title="0">{
+                parts = append(parts, "auto-k9s")
+        }</span>
+
+        <span class="cov0" title="0">if len(parts) == 0 </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+
+        <span class="cov0" title="0">return fmt.Sprintf("| %s", strings.Join(parts, " | "))</span>
 }
 
 // isSessionValid checks if the AWS session is valid for the given profile
@@ -1560,8 +1888,16 @@ func (k8s *K8sManager) HandleK9sLaunch(awsProfile string) error <span class="cov
         }</span>
 
         <span class="cov0" title="0">fmt.Printf("\n%sDo you want to open k9s? (y/n): %s", config.Cyan, config.Reset)
+
+        // Use /dev/tty for proper terminal input handling after fzf interaction
+        tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to open /dev/tty: %w", err)
+        }</span>
+        <span class="cov0" title="0">defer tty.Close()
+
         var response string
-        _, err := fmt.Scanln(&amp;response)
+        _, err = fmt.Fscanln(tty, &amp;response)
         if err != nil </span><span class="cov0" title="0">{
                 return err
         }</span>
@@ -1846,8 +2182,8 @@ func main() <span class="cov0" title="0">{
         fmt.Println("\n2. Testing configuration with example data...")
 
         // Add some test data
-        defaultConfig.ProfileConfigs["mycompany_DEV_developer"] = config.ProfileConfig{
-                Name:          "mycompany_DEV_developer",
+        defaultConfig.ProfileConfigs["company_DEV_developer"] = config.ProfileConfig{
+                Name:          "company_DEV_developer",
                 AccountID:     "123456789012",
                 ECRLogin:      true,
                 ECRRegion:     "eu-central-1",
@@ -1858,8 +2194,8 @@ func main() <span class="cov0" title="0">{
 
         // Test profile matching
         testProfiles := []string{
-                "mycompany_DEV_developer",
-                "mycompany_PROD_admin",
+                "company_DEV_developer",
+                "company_PROD_admin",
                 "unknown_profile",
         }
 
