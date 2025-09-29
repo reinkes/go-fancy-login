@@ -4,39 +4,78 @@ Complete setup guide for running fancy-login Go version on Windows.
 
 ## Prerequisites
 
+Fancy Login requires several command-line tools to function properly. Choose your preferred package manager:
+
 ### Required Tools
-Install these tools before proceeding:
 
-1. **Go** (required for building): https://golang.org/dl/
-2. **AWS CLI**: `winget install Amazon.AWSCLI` or download from AWS
-3. **kubectl**: `winget install Kubernetes.kubectl` 
-4. **fzf**: `winget install junegunn.fzf` or `choco install fzf`
-5. **k9s**: `winget install Kubernetes.k9s` or download from GitHub
-6. **Docker Desktop** (for ECR login): `winget install Docker.DockerDesktop`
+| Tool | Purpose | Installation |
+|------|---------|--------------|
+| **AWS CLI** | AWS authentication | `winget install Amazon.AWSCLI` |
+| **kubectl** | Kubernetes cluster management | `winget install Kubernetes.kubectl` |
+| **fzf** | Interactive fuzzy finder | `winget install junegunn.fzf` |
 
-### Installation Methods
-- **Winget**: Built into Windows 10/11
-- **Chocolatey**: Package manager for Windows
-- **Scoop**: Command-line installer for Windows
+### Optional Tools (Recommended)
+
+| Tool | Purpose | Installation |
+|------|---------|--------------|
+| **k9s** | Kubernetes cluster visualization | `winget install Kubernetes.k9s` |
+| **Docker Desktop** | Container runtime for ECR | `winget install Docker.DockerDesktop` |
+
+### Package Manager Options
+
+- **Winget**: Built into Windows 10/11 (recommended)
+- **Scoop**: Lightweight command-line installer
+- **Chocolatey**: Full-featured package manager
 - **Direct Downloads**: From official websites
 
 ## Installation Steps
 
 ### 1. Install Dependencies
 
+**Using Winget (Recommended):**
 ```powershell
-# Using winget (recommended)
+# Required tools
 winget install Amazon.AWSCLI
-winget install Kubernetes.kubectl  
+winget install Kubernetes.kubectl
 winget install junegunn.fzf
+
+# Optional tools
 winget install Kubernetes.k9s
 winget install Docker.DockerDesktop
+```
 
-# Or using Chocolatey
-choco install awscli kubernetes-cli fzf k9s docker-desktop
+**Using Scoop:**
+```powershell
+# Install Scoop first if not already installed
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+irm get.scoop.sh | iex
 
-# Or using Scoop
-scoop install aws kubectl fzf k9s docker
+# Required tools
+scoop install aws kubectl fzf
+
+# Optional tools
+scoop install k9s docker
+```
+
+**Using Chocolatey:**
+```powershell
+# Required tools
+choco install awscli kubernetes-cli fzf
+
+# Optional tools
+choco install k9s docker-desktop
+```
+
+**Verify Installation:**
+```powershell
+# Check required tools
+aws --version
+kubectl version --client
+fzf --version
+
+# Check optional tools
+k9s version      # (optional)
+docker --version # (optional)
 ```
 
 ### 2. Install fancy-login-go
@@ -44,7 +83,7 @@ scoop install aws kubectl fzf k9s docker
 **Option A: Scoop (Recommended)**
 ```powershell
 # Install directly from GitHub
-scoop install https://raw.githubusercontent.com/reinkes/go-fancy-login/main/fancy-login-go.json
+scoop install https://raw.githubusercontent.com/reinkes/homebrew-tap/main/bucket/fancy-login-go.json
 
 # Scoop will suggest any missing dependencies
 ```

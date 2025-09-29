@@ -19,6 +19,87 @@ A streamlined AWS SSO login and Kubernetes context selection utility that provid
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+Fancy Login requires several command-line tools to function properly. Install the required tools using your preferred package manager:
+
+#### Required Tools
+
+| Tool | Purpose | macOS (Homebrew) | Windows (Scoop) | Linux (apt/yum) |
+|------|---------|------------------|------------------|-----------------|
+| **AWS CLI** | AWS authentication | `brew install awscli` | `scoop install aws` | `apt install awscli` |
+| **kubectl** | Kubernetes cluster management | `brew install kubernetes-cli` | `scoop install kubectl` | `apt install kubectl` |
+| **fzf** | Interactive fuzzy finder | `brew install fzf` | `scoop install fzf` | `apt install fzf` |
+
+#### Optional Tools (Recommended)
+
+| Tool | Purpose | macOS (Homebrew) | Windows (Scoop) | Linux (apt/yum) |
+|------|---------|------------------|------------------|-----------------|
+| **k9s** | Kubernetes cluster visualization | `brew install k9s` | `scoop install k9s` | [Download from GitHub](https://github.com/derailed/k9s/releases) |
+| **Docker** | Container runtime for ECR | `brew install docker` | `scoop install docker` | `apt install docker.io` |
+
+#### Quick Setup Commands
+
+**macOS (Homebrew):**
+```bash
+# Required tools
+brew install awscli kubernetes-cli fzf
+
+# Optional tools
+brew install k9s docker
+```
+
+**Windows (Scoop):**
+```powershell
+# Install Scoop first if not already installed
+# Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+# irm get.scoop.sh | iex
+
+# Required tools
+scoop install aws kubectl fzf
+
+# Optional tools
+scoop install k9s docker
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+# Required tools
+sudo apt update
+sudo apt install awscli kubectl fzf
+
+# k9s (download latest release)
+curl -sL https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.tar.gz | tar xz
+sudo mv k9s /usr/local/bin/
+
+# Docker
+sudo apt install docker.io
+```
+
+**Linux (RHEL/CentOS/Fedora):**
+```bash
+# Required tools
+sudo dnf install awscli kubectl fzf
+
+# Or on older systems:
+# sudo yum install awscli kubectl fzf
+```
+
+#### Verify Installation
+
+After installing the dependencies, verify they're working:
+
+```bash
+# Check required tools
+aws --version
+kubectl version --client
+fzf --version
+
+# Check optional tools
+k9s version      # (optional)
+docker --version # (optional)
+```
+
 ### Installation
 
 **Download from GitHub Releases (Recommended):**
@@ -63,12 +144,10 @@ brew install fancy-login-go
 
 **Scoop (Windows):**
 ```powershell
-# Install directly from this repository
-scoop install https://raw.githubusercontent.com/reinkes/go-fancy-login/main/fancy-login-go.json
+# Install fancy-login-go directly from our tap
+scoop install https://raw.githubusercontent.com/reinkes/homebrew-tap/main/bucket/fancy-login-go.json
 
-# Scoop will suggest installing dependencies if not found:
-# - aws-cli, kubectl, fzf (required)
-# - k9s, docker (optional)
+# Scoop will automatically suggest any missing dependencies
 ```
 
 **Build from Source:**
