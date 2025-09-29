@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"fancy-login/internal/config"
-	"fancy-login/internal/utils"
 )
 
 func TestProfileDisplayInfo_Sorting(t *testing.T) {
@@ -265,23 +264,6 @@ func TestCustomDisplayName(t *testing.T) {
 				t.Errorf("Expected to contain '%s', but got '%s'", tc.expectedContains, prefixedName)
 			}
 		})
-	}
-}
-
-// Test helper to create a mock AWSManager for testing
-func createMockAWSManager() *AWSManager {
-	cfg := &config.Config{
-		FancyVerbose: false,
-	}
-	logger := utils.NewLogger(false) // Logger takes boolean, not config
-	fancyConfig := &config.FancyConfig{
-		ProfileConfigs: make(map[string]config.ProfileConfig),
-	}
-
-	return &AWSManager{
-		config:      cfg,
-		logger:      logger,
-		fancyConfig: fancyConfig,
 	}
 }
 
