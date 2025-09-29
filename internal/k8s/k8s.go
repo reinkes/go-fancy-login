@@ -80,8 +80,16 @@ func (k8s *K8sManager) HandleK9sLaunch(awsProfile string) error {
 	}
 
 	fmt.Printf("\n%sDo you want to open k9s? (y/n): %s", config.Cyan, config.Reset)
+
+	// Use /dev/tty for proper terminal input handling after fzf interaction
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("failed to open /dev/tty: %w", err)
+	}
+	defer tty.Close()
+
 	var response string
-	_, err := fmt.Scanln(&response)
+	_, err = fmt.Fscanln(tty, &response)
 	if err != nil {
 		return err
 	}
