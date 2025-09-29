@@ -94,6 +94,13 @@ fancy-go
 - Lists all profiles from `~/.aws/config` using regex parsing
 - Uses fzf for interactive selection with fuzzy matching
 - Handles both `[profile name]` and `[default]` formats
+- **Custom Display Names**: Uses `ProfileConfig.Name` field for display when configured
+- **Organized Categories**:
+  - K9s auto-launch profiles (★ prefix) at top for quick access
+  - Other configured profiles with metadata (ECR, k8s context info)
+  - Unconfigured profiles at bottom
+- **Alphabetical Sorting**: Profiles sorted by name within each category
+- **Robust Matching**: Handles fzf whitespace trimming for reliable selection
 - Validates profile existence and SSO configuration
 - Exports profile to `/tmp/aws_profile.sh` for shell integration
 
@@ -230,6 +237,23 @@ Choice [2]:
 3. **ECR Region**: Set region for ECR login (defaults to profile region)
 4. **Kubernetes Context**: Select from available contexts or "None"
 5. **K9s Auto-launch**: Enable automatic K9s launch for profiles with contexts
+
+**Custom Display Names:**
+You can set custom display names for profiles in your `fancy-config.yaml`:
+```yaml
+profiles:
+  dev-account-123456789:
+    name: "🚀 Development Environment"
+    ecr_login: true
+    k9s_auto_launch: true
+
+  prod-us-west-2-987654321:
+    name: "🏭 Production West"
+    ecr_login: true
+```
+- If `name` field is set, it's used for fzf display instead of the AWS profile name
+- Falls back to AWS profile name if no custom name is configured
+- Makes profile selection more user-friendly with descriptive names
 
 **Configuration Benefits:**
 - **Granular Control**: Each profile has individual settings
