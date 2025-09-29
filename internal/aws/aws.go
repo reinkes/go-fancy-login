@@ -345,11 +345,17 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 	// Calculate the maximum length for alignment
 	maxNameLength := 0
 	for _, profile := range allConfiguredProfiles {
+		// Use the custom name from config if set, otherwise use the profile name
+		displayName := profile.ProfileName
+		if profile.Config.Name != "" {
+			displayName = profile.Config.Name
+		}
+
 		var prefixedName string
 		if profile.IsK9s {
-			prefixedName = fmt.Sprintf("★ %s", profile.ProfileName)
+			prefixedName = fmt.Sprintf("★ %s", displayName)
 		} else {
-			prefixedName = fmt.Sprintf("  %s", profile.ProfileName)
+			prefixedName = fmt.Sprintf("  %s", displayName)
 		}
 
 		if len(prefixedName) > maxNameLength {
@@ -364,10 +370,16 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 		var displayText string
 		var prefixedName string
 
+		// Use the custom name from config if set, otherwise use the profile name
+		displayName := profile.ProfileName
+		if profile.Config.Name != "" {
+			displayName = profile.Config.Name
+		}
+
 		if profile.IsK9s {
-			prefixedName = fmt.Sprintf("★ %s", profile.ProfileName)
+			prefixedName = fmt.Sprintf("★ %s", displayName)
 		} else {
-			prefixedName = fmt.Sprintf("  %s", profile.ProfileName)
+			prefixedName = fmt.Sprintf("  %s", displayName)
 		}
 
 		// Pad to align the pipe character
