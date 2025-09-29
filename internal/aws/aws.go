@@ -34,25 +34,34 @@ func NewAWSManager(cfg *config.Config, logger *utils.Logger, fancyConfig *config
 
 // SelectAWSProfile allows user to select an AWS profile using fzf
 func (aws *AWSManager) SelectAWSProfile() (string, error) {
-	aws.logger.FancyLog("Select an AWS Profile:")
-
-	profiles, err := aws.getAWSProfiles()
+	displayProfiles, err := aws.getProfilesWithMetadata()
 	if err != nil {
 		return "", err
 	}
 
-	if len(profiles) == 0 {
+	if len(displayProfiles) == 0 {
 		aws.logger.Die("No AWS profiles found in ~/.aws/config")
 	}
 
-	aws.logger.FancyLog(fmt.Sprintf("Profiles found: %v", profiles))
+	configuredCount := aws.countConfiguredProfiles(displayProfiles)
+	totalCount := aws.countRealProfiles(displayProfiles)
+
+	aws.logger.FancyLog("☁️ AWS Profile Selection")
+	aws.logger.FancyLog(fmt.Sprintf("Found %d configured profiles out of %d total AWS profiles",
+		configuredCount, totalCount))
+
+	// Create display text for fzf
+	var displayTexts []string
+	for _, p := range displayProfiles {
+		displayTexts = append(displayTexts, p.DisplayText)
+	}
 
 	// Use fzf to select profile with proper TTY handling and timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "fzf", "--prompt=Select AWS Profile: ")
-	cmd.Stdin = strings.NewReader(strings.Join(profiles, "\n"))
+	cmd.Stdin = strings.NewReader(strings.Join(displayTexts, "\n"))
 
 	// fzf needs full terminal access - redirect both stderr and pass through TTY
 	cmd.Stderr = os.Stderr
@@ -72,23 +81,82 @@ func (aws *AWSManager) SelectAWSProfile() (string, error) {
 		return "", fmt.Errorf("profile selection failed: %w", err)
 	}
 
-	profile := strings.TrimSpace(string(output))
-	if profile == "" {
+	selectedDisplayText := strings.TrimSpace(string(output))
+	if selectedDisplayText == "" {
 		aws.logger.Die("No profile selected. Exiting.")
 	}
 
-	// Remove "profile " prefix if present
-	profile = strings.TrimPrefix(profile, "profile ")
+	// Find the actual profile name from the selected display text
+	var selectedProfile string
+	var isConfigured bool
+	for _, p := range displayProfiles {
+		if p.DisplayText == selectedDisplayText {
+			selectedProfile = p.Name
+			isConfigured = p.IsConfigured
+			break
+		}
+	}
 
-	aws.logger.FancyLog(fmt.Sprintf("Profile selected: %s", profile))
+	// Handle separator selection (shouldn't happen but be safe)
+	if selectedProfile == "---" || selectedProfile == "" {
+		return "", fmt.Errorf("invalid profile selection")
+	}
+
+	aws.logger.FancyLog(fmt.Sprintf("Profile selected: %s (configured: %v)", selectedProfile, isConfigured))
+
+	// If profile is not configured, offer to run configuration
+	if !isConfigured {
+		aws.logger.LogWarning(fmt.Sprintf("Profile '%s' is not configured in fancy-config", selectedProfile))
+		fmt.Printf("%sWould you like to configure this profile now? (y/N): %s", config.Cyan, config.Reset)
+
+		// Use /dev/tty for proper terminal input handling
+		tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+		if err != nil {
+			aws.logger.LogWarning("Failed to open /dev/tty for input, continuing with unconfigured profile")
+		} else {
+			defer tty.Close()
+			var response string
+			if _, err := fmt.Fscanln(tty, &response); err != nil {
+				aws.logger.LogWarning("Failed to read user input, continuing with unconfigured profile")
+			}
+
+			if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
+				aws.logger.LogInfo("Run 'fancy-login-go --config' to configure profiles")
+				return "", fmt.Errorf("profile configuration needed")
+			}
+		}
+		aws.logger.LogWarning("Continuing with unconfigured profile...")
+	}
 
 	// Export profile to temp file for shell integration
-	if err := aws.exportProfileToTemp(profile); err != nil {
+	if err := aws.exportProfileToTemp(selectedProfile); err != nil {
 		aws.logger.LogWarning(fmt.Sprintf("Failed to export profile to temp file: %v", err))
 	}
 
-	aws.logger.LogSuccess(fmt.Sprintf("Selected AWS Profile: %s", profile))
-	return profile, nil
+	aws.logger.LogSuccess(fmt.Sprintf("Selected AWS Profile: %s", selectedProfile))
+	return selectedProfile, nil
+}
+
+// countConfiguredProfiles counts how many profiles are configured
+func (aws *AWSManager) countConfiguredProfiles(profiles []ProfileDisplayInfo) int {
+	count := 0
+	for _, p := range profiles {
+		if p.IsConfigured {
+			count++
+		}
+	}
+	return count
+}
+
+// countRealProfiles counts actual profiles (excludes separators and headers)
+func (aws *AWSManager) countRealProfiles(profiles []ProfileDisplayInfo) int {
+	count := 0
+	for _, p := range profiles {
+		if p.Name != "---" && !strings.HasPrefix(p.DisplayText, "===") && !strings.HasPrefix(p.DisplayText, "✓") {
+			count++
+		}
+	}
+	return count
 }
 
 // HandleAWSLogin checks and handles AWS SSO authentication
@@ -114,8 +182,17 @@ func (aws *AWSManager) HandleAWSLogin(profile string, forceLogin bool) error {
 	aws.logger.LogWarning(fmt.Sprintf("Unable to authenticate with profile %s. This might not be an SSO profile.", profile))
 
 	fmt.Printf("%sDo you want to continue anyway? (y/n): %s", config.Cyan, config.Reset)
+
+	// Use /dev/tty for proper terminal input handling
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		aws.logger.LogError(fmt.Sprintf("Failed to open /dev/tty for input: %v", err))
+		return err
+	}
+	defer tty.Close()
+
 	var response string
-	_, err = fmt.Scanln(&response)
+	_, err = fmt.Fscanln(tty, &response)
 	if err != nil {
 		aws.logger.LogError(fmt.Sprintf("Error reading user input: %v", err))
 		return err
@@ -212,8 +289,197 @@ func (aws *AWSManager) GetAccountID(profile string) (string, error) {
 	return aws.getAccountID(profile)
 }
 
-// getAWSProfiles reads AWS profiles from ~/.aws/config
-func (aws *AWSManager) getAWSProfiles() ([]string, error) {
+// ProfileDisplayInfo holds information for displaying profiles in selection
+type ProfileDisplayInfo struct {
+	Name        string
+	DisplayText string
+	IsConfigured bool
+	Metadata    string
+}
+
+
+// getProfilesWithMetadata returns profiles with rich metadata for display
+func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
+	// Get profiles from AWS config
+	awsProfiles, err := aws.getAWSConfigProfiles()
+	if err != nil {
+		return nil, err
+	}
+
+	var displayProfiles []ProfileDisplayInfo
+
+	// Separate profiles by type for better organization
+	var k9sProfiles []ProfileDisplayInfo
+	var configuredProfiles []ProfileDisplayInfo
+	configuredCount := 0
+
+	// First pass: collect all profiles and find the longest name for alignment
+	type profileInfo struct {
+		ProfileName string
+		Config      config.ProfileConfig
+		IsK9s       bool
+	}
+	var allConfiguredProfiles []profileInfo
+
+	for profileName := range aws.fancyConfig.ProfileConfigs {
+		// Check if this profile exists in AWS config
+		found := false
+		for _, awsProfile := range awsProfiles {
+			if awsProfile == profileName {
+				found = true
+				break
+			}
+		}
+
+		if found {
+			profileConfig := aws.fancyConfig.ProfileConfigs[profileName]
+			allConfiguredProfiles = append(allConfiguredProfiles, profileInfo{
+				ProfileName: profileName,
+				Config:      profileConfig,
+				IsK9s:       profileConfig.K9sAutoLaunch,
+			})
+			configuredCount++
+		}
+	}
+
+	// Calculate the maximum length for alignment
+	maxNameLength := 0
+	for _, profile := range allConfiguredProfiles {
+		var prefixedName string
+		if profile.IsK9s {
+			prefixedName = fmt.Sprintf("★ %s", profile.ProfileName)
+		} else {
+			prefixedName = fmt.Sprintf("  %s", profile.ProfileName)
+		}
+
+		if len(prefixedName) > maxNameLength {
+			maxNameLength = len(prefixedName)
+		}
+	}
+
+	// Second pass: format profiles with proper alignment
+	for _, profile := range allConfiguredProfiles {
+		metadata := aws.buildProfileMetadata(profile.Config)
+
+		var displayText string
+		var prefixedName string
+
+		if profile.IsK9s {
+			prefixedName = fmt.Sprintf("★ %s", profile.ProfileName)
+		} else {
+			prefixedName = fmt.Sprintf("  %s", profile.ProfileName)
+		}
+
+		// Pad to align the pipe character
+		padding := maxNameLength - len(prefixedName)
+		if padding < 0 {
+			padding = 0
+		}
+
+		if metadata != "" {
+			displayText = fmt.Sprintf("%s%s %s", prefixedName, strings.Repeat(" ", padding), metadata)
+		} else {
+			displayText = prefixedName
+		}
+
+		profileInfo := ProfileDisplayInfo{
+			Name:        profile.ProfileName,
+			DisplayText: displayText,
+			IsConfigured: true,
+			Metadata:    metadata,
+		}
+
+		if profile.IsK9s {
+			k9sProfiles = append(k9sProfiles, profileInfo)
+		} else {
+			configuredProfiles = append(configuredProfiles, profileInfo)
+		}
+	}
+
+	// Add k9s profiles first (most important for daily use)
+	if len(k9sProfiles) > 0 {
+		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+			Name:        "---",
+			DisplayText: "=== QUICK ACCESS (K9S AUTO-LAUNCH) ===",
+			IsConfigured: false,
+			Metadata:    "",
+		})
+		displayProfiles = append(displayProfiles, k9sProfiles...)
+	}
+
+	// Add other configured profiles
+	if len(configuredProfiles) > 0 {
+		if len(k9sProfiles) > 0 {
+			displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+				Name:        "---",
+				DisplayText: "",
+				IsConfigured: false,
+				Metadata:    "",
+			})
+		}
+		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+			Name:        "---",
+			DisplayText: "=== OTHER CONFIGURED PROFILES ===",
+			IsConfigured: false,
+			Metadata:    "",
+		})
+		displayProfiles = append(displayProfiles, configuredProfiles...)
+	}
+
+	// Add separator if we have both configured and unconfigured profiles
+	unconfiguredProfiles := []string{}
+	for _, awsProfile := range awsProfiles {
+		if _, exists := aws.fancyConfig.ProfileConfigs[awsProfile]; !exists {
+			unconfiguredProfiles = append(unconfiguredProfiles, awsProfile)
+		}
+	}
+
+	if len(unconfiguredProfiles) > 0 {
+		if configuredCount > 0 {
+			displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+				Name:        "---",
+				DisplayText: "",
+				IsConfigured: false,
+				Metadata:    "",
+			})
+		}
+		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+			Name:        "---",
+			DisplayText: "=== UNCONFIGURED PROFILES ===",
+			IsConfigured: false,
+			Metadata:    "",
+		})
+
+		// Add unconfigured profiles
+		for _, profileName := range unconfiguredProfiles {
+			displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+				Name:        profileName,
+				DisplayText: fmt.Sprintf("           %s", profileName),
+				IsConfigured: false,
+				Metadata:    "",
+			})
+		}
+	} else if configuredCount > 0 {
+		// Add helpful hint when all profiles are configured
+		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+			Name:        "---",
+			DisplayText: "",
+			IsConfigured: false,
+			Metadata:    "",
+		})
+		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
+			Name:        "---",
+			DisplayText: "✓ All AWS profiles are configured! Run --config to modify settings.",
+			IsConfigured: false,
+			Metadata:    "",
+		})
+	}
+
+	return displayProfiles, nil
+}
+
+// getAWSConfigProfiles reads AWS profiles from ~/.aws/config
+func (aws *AWSManager) getAWSConfigProfiles() ([]string, error) {
 	homeDir, _ := os.UserHomeDir()
 	configPath := filepath.Join(homeDir, ".aws", "config")
 
@@ -225,17 +491,46 @@ func (aws *AWSManager) getAWSProfiles() ([]string, error) {
 
 	var profiles []string
 	re := regexp.MustCompile(`^\[profile\s+(.+)\]`)
+	defaultRe := regexp.MustCompile(`^\[default\]`)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		matches := re.FindStringSubmatch(line)
-		if len(matches) == 2 {
+
+		// Check for named profiles
+		if matches := re.FindStringSubmatch(line); len(matches) == 2 {
 			profiles = append(profiles, matches[1])
+		}
+		// Check for default profile
+		if defaultRe.MatchString(line) {
+			profiles = append(profiles, "default")
 		}
 	}
 
 	return profiles, scanner.Err()
+}
+
+// buildProfileMetadata creates a display string with profile configuration info
+func (aws *AWSManager) buildProfileMetadata(config config.ProfileConfig) string {
+	var parts []string
+
+	if config.ECRLogin {
+		parts = append(parts, "ECR")
+	}
+
+	if config.K8sContext != "" {
+		parts = append(parts, fmt.Sprintf("k8s:%s", config.K8sContext))
+	}
+
+	if config.K9sAutoLaunch {
+		parts = append(parts, "auto-k9s")
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("| %s", strings.Join(parts, " | "))
 }
 
 // isSessionValid checks if the AWS session is valid for the given profile
