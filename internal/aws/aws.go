@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -90,7 +91,8 @@ func (aws *AWSManager) SelectAWSProfile() (string, error) {
 	var selectedProfile string
 	var isConfigured bool
 	for _, p := range displayProfiles {
-		if p.DisplayText == selectedDisplayText {
+		// Handle both exact match and trimmed match (fzf may strip leading whitespace)
+		if p.DisplayText == selectedDisplayText || strings.TrimSpace(p.DisplayText) == selectedDisplayText {
 			selectedProfile = p.Name
 			isConfigured = p.IsConfigured
 			break
@@ -408,6 +410,23 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 		}
 	}
 
+	// Sort profiles by display name within each category
+	sort.Slice(k9sProfiles, func(i, j int) bool {
+		// Extract display name from DisplayText (remove prefix and metadata)
+		nameI := strings.TrimSpace(strings.Split(k9sProfiles[i].DisplayText, "|")[0])
+		nameJ := strings.TrimSpace(strings.Split(k9sProfiles[j].DisplayText, "|")[0])
+		nameI = strings.TrimPrefix(nameI, "★")
+		nameJ = strings.TrimPrefix(nameJ, "★")
+		return strings.TrimSpace(nameI) < strings.TrimSpace(nameJ)
+	})
+
+	sort.Slice(configuredProfiles, func(i, j int) bool {
+		// Extract display name from DisplayText (remove prefix and metadata)
+		nameI := strings.TrimSpace(strings.Split(configuredProfiles[i].DisplayText, "|")[0])
+		nameJ := strings.TrimSpace(strings.Split(configuredProfiles[j].DisplayText, "|")[0])
+		return strings.TrimSpace(nameI) < strings.TrimSpace(nameJ)
+	})
+
 	// Add k9s profiles first (most important for daily use)
 	if len(k9sProfiles) > 0 {
 		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
@@ -445,6 +464,9 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 			unconfiguredProfiles = append(unconfiguredProfiles, awsProfile)
 		}
 	}
+
+	// Sort unconfigured profiles alphabetically
+	sort.Strings(unconfiguredProfiles)
 
 	if len(unconfiguredProfiles) > 0 {
 		if configuredCount > 0 {
