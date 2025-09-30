@@ -306,9 +306,9 @@ jobs:
         AMD64_HASH=$(curl -sL https://github.com/reinkes/go-fancy-login/releases/download/${VERSION}/fancy-login-go-${VERSION}-windows-amd64.exe.zip | sha256sum | cut -d' ' -f1)
         ARM64_HASH=$(curl -sL https://github.com/reinkes/go-fancy-login/releases/download/${VERSION}/fancy-login-go-${VERSION}-windows-arm64.exe.zip | sha256sum | cut -d' ' -f1)
 
-        # Update hashes in manifest
-        sed -i "0,/\"hash\": \"[^\"]*\"/{s/\"hash\": \"[^\"]*\"/\"hash\": \"$AMD64_HASH\"/}" bucket/fancy-login-go.json
-        sed -i "0,/\"hash\": \"[^\"]*\"/{s/\"hash\": \"[^\"]*\"/\"hash\": \"$ARM64_HASH\"/}" bucket/fancy-login-go.json
+        # Update hashes in manifest (target specific architectures)
+        sed -i '/64bit/{N;N;s/\"hash\": \"[^\"]*\"/\"hash\": \"'$AMD64_HASH'\"/}' bucket/fancy-login-go.json
+        sed -i '/arm64/{N;N;s/\"hash\": \"[^\"]*\"/\"hash\": \"'$ARM64_HASH'\"/}' bucket/fancy-login-go.json
 
         # Verify changes
         echo "Updated Homebrew formula:"
