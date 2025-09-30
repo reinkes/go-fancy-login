@@ -291,12 +291,11 @@ func (aws *AWSManager) GetAccountID(profile string) (string, error) {
 
 // ProfileDisplayInfo holds information for displaying profiles in selection
 type ProfileDisplayInfo struct {
-	Name        string
-	DisplayText string
+	Name         string
+	DisplayText  string
 	IsConfigured bool
-	Metadata    string
+	Metadata     string
 }
-
 
 // getProfilesWithMetadata returns profiles with rich metadata for display
 func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
@@ -383,10 +382,10 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 		}
 
 		profileInfo := ProfileDisplayInfo{
-			Name:        profile.ProfileName,
-			DisplayText: displayText,
+			Name:         profile.ProfileName,
+			DisplayText:  displayText,
 			IsConfigured: true,
-			Metadata:    metadata,
+			Metadata:     metadata,
 		}
 
 		if profile.IsK9s {
@@ -399,10 +398,10 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 	// Add k9s profiles first (most important for daily use)
 	if len(k9sProfiles) > 0 {
 		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-			Name:        "---",
-			DisplayText: "=== QUICK ACCESS (K9S AUTO-LAUNCH) ===",
+			Name:         "---",
+			DisplayText:  "=== QUICK ACCESS (K9S AUTO-LAUNCH) ===",
 			IsConfigured: false,
-			Metadata:    "",
+			Metadata:     "",
 		})
 		displayProfiles = append(displayProfiles, k9sProfiles...)
 	}
@@ -411,17 +410,17 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 	if len(configuredProfiles) > 0 {
 		if len(k9sProfiles) > 0 {
 			displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-				Name:        "---",
-				DisplayText: "",
+				Name:         "---",
+				DisplayText:  "",
 				IsConfigured: false,
-				Metadata:    "",
+				Metadata:     "",
 			})
 		}
 		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-			Name:        "---",
-			DisplayText: "=== OTHER CONFIGURED PROFILES ===",
+			Name:         "---",
+			DisplayText:  "=== OTHER CONFIGURED PROFILES ===",
 			IsConfigured: false,
-			Metadata:    "",
+			Metadata:     "",
 		})
 		displayProfiles = append(displayProfiles, configuredProfiles...)
 	}
@@ -437,41 +436,41 @@ func (aws *AWSManager) getProfilesWithMetadata() ([]ProfileDisplayInfo, error) {
 	if len(unconfiguredProfiles) > 0 {
 		if configuredCount > 0 {
 			displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-				Name:        "---",
-				DisplayText: "",
+				Name:         "---",
+				DisplayText:  "",
 				IsConfigured: false,
-				Metadata:    "",
+				Metadata:     "",
 			})
 		}
 		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-			Name:        "---",
-			DisplayText: "=== UNCONFIGURED PROFILES ===",
+			Name:         "---",
+			DisplayText:  "=== UNCONFIGURED PROFILES ===",
 			IsConfigured: false,
-			Metadata:    "",
+			Metadata:     "",
 		})
 
 		// Add unconfigured profiles
 		for _, profileName := range unconfiguredProfiles {
 			displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-				Name:        profileName,
-				DisplayText: fmt.Sprintf("           %s", profileName),
+				Name:         profileName,
+				DisplayText:  fmt.Sprintf("           %s", profileName),
 				IsConfigured: false,
-				Metadata:    "",
+				Metadata:     "",
 			})
 		}
 	} else if configuredCount > 0 {
 		// Add helpful hint when all profiles are configured
 		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-			Name:        "---",
-			DisplayText: "",
+			Name:         "---",
+			DisplayText:  "",
 			IsConfigured: false,
-			Metadata:    "",
+			Metadata:     "",
 		})
 		displayProfiles = append(displayProfiles, ProfileDisplayInfo{
-			Name:        "---",
-			DisplayText: "✓ All AWS profiles are configured! Run --config to modify settings.",
+			Name:         "---",
+			DisplayText:  "✓ All AWS profiles are configured! Run --config to modify settings.",
 			IsConfigured: false,
-			Metadata:    "",
+			Metadata:     "",
 		})
 	}
 
