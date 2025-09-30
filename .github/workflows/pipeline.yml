@@ -300,6 +300,15 @@ jobs:
         VERSION_NO_V=${VERSION#v}
         sed -i "s|\"version\": \"[^\"]*\"|\"version\": \"$VERSION_NO_V\"|" bucket/fancy-login-go.json
         sed -i "s|releases/download/v[^/]*/|releases/download/${VERSION}/|g" bucket/fancy-login-go.json
+        sed -i "s|fancy-login-go-v[^-]*-|fancy-login-go-${VERSION}-|g" bucket/fancy-login-go.json
+
+        # Calculate and update SHA256 hashes
+        AMD64_HASH=$(curl -sL https://github.com/reinkes/go-fancy-login/releases/download/${VERSION}/fancy-login-go-${VERSION}-windows-amd64.exe.zip | sha256sum | cut -d' ' -f1)
+        ARM64_HASH=$(curl -sL https://github.com/reinkes/go-fancy-login/releases/download/${VERSION}/fancy-login-go-${VERSION}-windows-arm64.exe.zip | sha256sum | cut -d' ' -f1)
+
+        # Update hashes in manifest
+        sed -i "0,/\"hash\": \"[^\"]*\"/{s/\"hash\": \"[^\"]*\"/\"hash\": \"$AMD64_HASH\"/}" bucket/fancy-login-go.json
+        sed -i "0,/\"hash\": \"[^\"]*\"/{s/\"hash\": \"[^\"]*\"/\"hash\": \"$ARM64_HASH\"/}" bucket/fancy-login-go.json
 
         # Verify changes
         echo "Updated Homebrew formula:"
